@@ -1,0 +1,30 @@
+{
+  "name": "mcp-hub",
+  "version": "1.0.0",
+  "description": "A manager server for MCP servers that handles process management and tool routing",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "mcp-hub": "./src/utils/cli.js"
+  },
+  "scripts": {
+    "start": "node ./src/utils/cli.js --port 3000 --config ~/mcp-hub/mcp-servers.json",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "update-data": "node scripts/update-data.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.4.1",
+    "express": "^4.21.2",
+    "winston": "^3.17.0",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^3.0.5",
+    "mock-fs": "^5.4.1",
+    "nock": "^14.0.0",
+    "nodemon": "^3.1.9",
+    "supertest": "^7.0.0",
+    "vitest": "^3.0.5"
+  }
+}

@@ -1,0 +1,36 @@
+sequenceDiagram
+    participant C as Client
+    participant H as Hub Server
+    participant M as MCP Server
+    
+    Note over C,H: Tool Execution Flow
+    C->>H: POST /api/servers/{name}/tools
+    H->>H: Validate Request
+    H->>H: Check Server Status
+    
+    alt Server Not Connected
+        H-->>C: Error: Server Unavailable
+    else Server Connected
+        H->>M: Execute Tool
+        
+        alt Tool Success
+            M-->>H: Tool Result
+            H-->>C: Success Response
+        else Tool Error
+            M-->>H: Error Details
+            H-->>C: Error Response
+        end
+    end
+    
+    Note over C,H: Resource Access Flow
+    C->>H: POST /api/servers/{name}/resources
+    H->>H: Validate URI
+    H->>H: Check Server Status
+    
+    alt Valid Resource
+        H->>M: Request Resource
+        M-->>H: Resource Data
+        H-->>C: Resource Content
+    else Invalid Resource
+        H-->>C: 404 Not Found
+    end

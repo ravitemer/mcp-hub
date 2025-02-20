@@ -1,0 +1,6 @@
+{
+  "watch": ["src/**/*", ".env", "mcp-servers.json"],
+  "ext": "js,json",
+  "ignore": ["*.test.js"],
+  "exec": "node src/cli.js dev"
+}

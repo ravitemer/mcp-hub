@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ]
+    },
+    "git": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-git",
+        "--repository",
+        "/home/ubuntu/mcp-hub"
+      ]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/ubuntu/mcp-hub"
+      ]
+    }
+  }
+}

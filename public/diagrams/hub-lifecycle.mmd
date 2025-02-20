@@ -1,0 +1,37 @@
+sequenceDiagram
+    participant H as Hub Server
+    participant M1 as MCP Server 1
+    participant M2 as MCP Server 2
+    participant C as Client
+
+    Note over H: Server Start
+    activate H
+    H->>+M1: Connect
+    M1-->>-H: Connected + Capabilities
+    H->>+M2: Connect
+    M2-->>-H: Connected + Capabilities
+
+    Note over C,H: Client Interactions
+    C->>H: Register Client
+    H-->>C: Servers List & Capabilities
+    
+    C->>H: Call Tool (M1)
+    H->>M1: Execute Tool
+    M1-->>H: Tool Result
+    H-->>C: Response
+
+    C->>H: Access Resource (M2)
+    H->>M2: Get Resource
+    M2-->>H: Resource Data
+    H-->>C: Response
+
+    Note over H: Server Management
+    H->>H: Monitor Server Health
+    H->>H: Track Server Status
+    H->>H: Update Capabilities
+
+    Note over H: Shutdown Process
+    C->>H: Unregister
+    H->>M1: Disconnect
+    H->>M2: Disconnect
+    deactivate H

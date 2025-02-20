@@ -1,0 +1,31 @@
+flowchart TB
+    A[Hub Server Start] --> B{Config Available?}
+    B -->|Yes| C[Load Server Configs]
+    B -->|No| D[Use Default Settings]
+    
+    C --> E[Initialize Connections]
+    D --> E
+    
+    E --> F{For Each MCP Server}
+    F -->|Enabled| G[Attempt Connection]
+    F -->|Disabled| H[Skip Server]
+    
+    G --> I{Connection Status}
+    I -->|Success| J[Fetch Capabilities]
+    I -->|Failure| K[Log Error]
+    
+    J --> L[Store Server Info]
+    K --> M[Mark Server Unavailable]
+    
+    L --> N[Monitor Health]
+    M --> N
+    
+    N --> O{Health Check}
+    O -->|Healthy| P[Update Capabilities]
+    O -->|Unhealthy| Q[Attempt Reconnect]
+    
+    Q -->|Success| P
+    Q -->|Failure| R[Update Status]
+    
+    P --> N
+    R --> N
