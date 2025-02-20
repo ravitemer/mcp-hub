@@ -1,5 +1,9 @@
 # MCP Hub
 
+[![npm version](https://badge.fury.io/js/mcp-hub.svg)](https://www.npmjs.com/package/mcp-hub)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+
 A centralized manager for Model Context Protocol (MCP) servers that provides:
 
 - Dynamic MCP server management and monitoring
@@ -301,6 +305,22 @@ All server events are logged to `~/.mcp-hub/logs/mcp-hub.log` in JSON format:
 - Node.js >= 18.0.0
 - npm >= 9.0.0
 
+## Contributing
+
+Please read our [Contributing Guidelines](./CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+
+## Security
+
+For security-related issues, please review our [Security Policy](./SECURITY.md) and follow the vulnerability reporting process.
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for a list of all notable changes.
+
+## Code of Conduct
+
+Please note that this project is released with a [Code of Conduct](./CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
+
 ## License
 
-MIT License - See LICENSE file for details
+This project is licensed under the MIT License - see the [LICENSE.md](./LICENSE.md) file for details.
