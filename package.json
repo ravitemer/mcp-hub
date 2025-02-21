@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ravitemer/mcp-hub.git"
+    "url": "git+https://github.com/ravitemer/mcp-hub.git"
   },
   "keywords": [
     "mcp",
@@ -26,7 +26,7 @@
   "type": "module",
   "main": "./src/utils/cli.js",
   "bin": {
-    "mcp-hub": "./src/utils/cli.js"
+    "mcp-hub": "src/utils/cli.js"
   },
   "scripts": {
     "start": "node ./src/utils/cli.js --port 3000 --config ~/mcp-hub/mcp-servers.json",
