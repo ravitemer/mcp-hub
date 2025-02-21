@@ -267,38 +267,89 @@ MCP Hub uses a JSON configuration file to define managed servers:
 
 ## Error Handling
 
-The Hub Server implements comprehensive error handling:
+MCP Hub implements a comprehensive error handling system with custom error classes for different types of errors:
 
-1. **Server Connection Errors**
+### Error Classes
 
-   - Failed connection attempts
+- **ConfigError**: Configuration-related errors (invalid config, missing fields)
+- **ConnectionError**: Server connection issues (failed connections, transport errors)
+- **ServerError**: Server startup/initialization problems
+- **ToolError**: Tool execution failures
+- **ResourceError**: Resource access issues
+- **ValidationError**: Request validation errors
+
+Each error includes:
+
+- Error code for easy identification
+- Detailed error message
+- Additional context in the details object
+- Stack trace for debugging
+
+Example error structure:
+
+```json
+{
+  "code": "CONNECTION_ERROR",
+  "message": "Failed to communicate with server",
+  "details": {
+    "server": "example-server",
+    "error": "connection timeout"
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+### Error Categories
+
+1. **Configuration Errors**
+
+   - Invalid config format
+   - Missing required fields
+   - Environment variable issues
+
+2. **Server Management Errors**
+
+   - Connection failures
    - Lost connections
-   - Capability fetch failures
+   - Capability fetch issues
+   - Server startup problems
 
-2. **Request Errors**
+3. **Request Processing Errors**
 
-   - Invalid request parameters
-   - Server not found/available
+   - Invalid parameters
+   - Server availability
    - Tool execution failures
-   - Resource access failures
+   - Resource access issues
 
-3. **Client Management Errors**
+4. **Client Management Errors**
    - Registration failures
    - Duplicate registrations
    - Invalid client IDs
 
 ## Logging
 
-All server events are logged to `~/.mcp-hub/logs/mcp-hub.log` in JSON format:
+MCP Hub uses structured JSON logging for all events:
 
 ```json
 {
-  "level": "info",
-  "message": "Server started",
-  "timestamp": "2024-02-20T05:55:00.000Z",
-  "port": 3000
+  "type": "error",
+  "code": "TOOL_ERROR",
+  "message": "Failed to execute tool",
+  "data": {
+    "server": "example-server",
+    "tool": "example-tool",
+    "error": "Invalid parameters"
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
+
+Log levels include:
+
+- `info`: Normal operational messages
+- `warn`: Warning conditions
+- `debug`: Detailed debug information
+- `error`: Error conditions (includes error code and details)
 
 ## Requirements
 
