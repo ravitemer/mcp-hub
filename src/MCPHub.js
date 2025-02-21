@@ -1,6 +1,12 @@
 import logger from "./utils/logger.js";
 import { ConfigManager } from "./utils/config.js";
 import { MCPConnection } from "./MCPConnection.js";
+import {
+  ServerError,
+  ConnectionError,
+  ConfigError,
+  wrapError,
+} from "./utils/errors.js";
 
 export class MCPHub {
   constructor(configPathOrObject, { watch = false } = {}) {
@@ -10,55 +16,67 @@ export class MCPHub {
   }
 
   async initialize() {
-    await this.configManager.loadConfig();
+    try {
+      await this.configManager.loadConfig();
 
-    if (this.shouldWatchConfig) {
-      this.configManager.watchConfig();
-      this.configManager.on("configChanged", async (newConfig) => {
-        await this.updateConfig(newConfig);
-      });
+      if (this.shouldWatchConfig) {
+        this.configManager.watchConfig();
+        this.configManager.on("configChanged", async (newConfig) => {
+          await this.updateConfig(newConfig);
+        });
+      }
+
+      await this.startConfiguredServers();
+    } catch (error) {
+      // Only wrap if it's not already our error type
+      if (!(error instanceof ConfigError)) {
+        throw wrapError(error, "HUB_INIT_ERROR", {
+          watchEnabled: this.shouldWatchConfig,
+        });
+      }
+      throw error;
     }
-
-    await this.startConfiguredServers();
   }
 
   async startConfiguredServers() {
     const config = this.configManager.getConfig();
     const servers = Object.entries(config?.mcpServers || {});
-    logger.info({
-      message: "Starting configured servers",
-      count: servers.length,
-    });
+    logger.info("Starting configured servers", { count: servers.length });
 
     for (const [name, serverConfig] of servers) {
       try {
         // Skip disabled servers
         if (serverConfig.disabled) {
-          logger.info({
-            message: "Skipping disabled server",
-            server: name,
-          });
+          logger.info("Skipping disabled server", { server: name });
           continue;
         }
 
-        logger.info({
-          message: "Starting server",
-          server: name,
-        });
+        logger.info("Starting server", { server: name });
         await this.connectServer(name, serverConfig);
       } catch (error) {
-        logger.error({
-          message: "Failed to start server",
-          server: name,
-          error: error.message,
-        });
+        // Don't throw here as we want to continue with other servers
+        logger.error(
+          error.code || "SERVER_START_ERROR",
+          "Failed to start server",
+          {
+            server: name,
+            error: error.message,
+          },
+          false
+        );
       }
     }
   }
 
   async updateConfig(newConfigOrPath) {
-    await this.configManager.updateConfig(newConfigOrPath);
-    await this.startConfiguredServers();
+    try {
+      await this.configManager.updateConfig(newConfigOrPath);
+      await this.startConfiguredServers();
+    } catch (error) {
+      throw wrapError(error, "CONFIG_UPDATE_ERROR", {
+        isPathUpdate: typeof newConfigOrPath === "string",
+      });
+    }
   }
 
   async connectServer(name, config) {
@@ -72,12 +90,14 @@ export class MCPHub {
       await connection.connect();
       return connection.getServerInfo();
     } catch (error) {
-      logger.error({
-        message: "Failed to connect server",
-        server: name,
-        error: error.message,
-      });
-      return connection.getServerInfo();
+      // Connection errors are already properly typed from MCPConnection
+      if (!(error instanceof ConnectionError)) {
+        throw new ServerError(`Failed to connect server "${name}"`, {
+          server: name,
+          error: error.message,
+        });
+      }
+      throw error;
     }
   }
 
@@ -87,11 +107,16 @@ export class MCPHub {
       try {
         await connection.disconnect();
       } catch (error) {
-        logger.error({
-          message: "Error disconnecting server",
-          server: name,
-          error: error.message,
-        });
+        // Log but don't throw since we're cleaning up
+        logger.error(
+          "SERVER_DISCONNECT_ERROR",
+          "Error disconnecting server",
+          {
+            server: name,
+            error: error.message,
+          },
+          false
+        );
       } finally {
         this.connections.delete(name);
       }
@@ -99,8 +124,7 @@ export class MCPHub {
   }
 
   async disconnectAll() {
-    logger.info({
-      message: "Disconnecting all servers",
+    logger.info("Disconnecting all servers", {
       count: this.connections.size,
     });
 
@@ -114,11 +138,15 @@ export class MCPHub {
     results.forEach((result, index) => {
       if (result.status === "rejected") {
         const name = Array.from(this.connections.keys())[index];
-        logger.error({
-          message: "Failed to disconnect server during cleanup",
-          server: name,
-          error: result.reason.message,
-        });
+        logger.error(
+          "SERVER_DISCONNECT_ERROR",
+          "Failed to disconnect server during cleanup",
+          {
+            server: name,
+            error: result.reason?.message || "Unknown error",
+          },
+          false
+        );
       }
     });
 
@@ -127,7 +155,11 @@ export class MCPHub {
   }
 
   getServerStatus(name) {
-    return this.connections.get(name)?.getServerInfo();
+    const connection = this.connections.get(name);
+    if (!connection) {
+      throw new ServerError("Server not found", { server: name });
+    }
+    return connection.getServerInfo();
   }
 
   getAllServerStatuses() {
@@ -139,7 +171,11 @@ export class MCPHub {
   async callTool(serverName, toolName, args) {
     const connection = this.connections.get(serverName);
     if (!connection) {
-      throw new Error(`Server "${serverName}" not found`);
+      throw new ServerError("Server not found", {
+        server: serverName,
+        operation: "tool_call",
+        tool: toolName,
+      });
     }
     return await connection.callTool(toolName, args);
   }
@@ -147,7 +183,11 @@ export class MCPHub {
   async readResource(serverName, uri) {
     const connection = this.connections.get(serverName);
     if (!connection) {
-      throw new Error(`Server "${serverName}" not found`);
+      throw new ServerError("Server not found", {
+        server: serverName,
+        operation: "resource_read",
+        uri,
+      });
     }
     return await connection.readResource(uri);
   }

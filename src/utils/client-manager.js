@@ -1,4 +1,5 @@
 import logger from "./logger.js";
+import { ValidationError } from "./errors.js";
 
 export class ClientManager {
   constructor() {
@@ -10,10 +11,14 @@ export class ClientManager {
    * Register a new client
    * @param {string} clientId - Unique identifier for the client
    * @returns {number} Number of active clients
+   * @throws {ValidationError} If client is already registered
    */
   registerClient(clientId) {
-    logger.info({
-      message: "Client registered",
+    if (this.clients.has(clientId)) {
+      throw new ValidationError("Client already registered", { clientId });
+    }
+
+    logger.info("Client registered", {
       clientId,
       activeClients: this.clients.size + 1,
     });
@@ -24,10 +29,7 @@ export class ClientManager {
     if (this.shutdownTimer) {
       clearTimeout(this.shutdownTimer);
       this.shutdownTimer = null;
-      logger.info({
-        message: "Shutdown cancelled due to new client",
-        clientId,
-      });
+      logger.info("Shutdown cancelled due to new client", { clientId });
     }
 
     return this.clients.size;
@@ -37,19 +39,22 @@ export class ClientManager {
    * Unregister an existing client
    * @param {string} clientId - Unique identifier for the client
    * @returns {number} Number of remaining active clients
+   * @throws {ValidationError} If client is not registered
    */
   unregisterClient(clientId) {
+    if (!this.clients.has(clientId)) {
+      throw new ValidationError("Client not registered", { clientId });
+    }
+
     this.clients.delete(clientId);
 
-    logger.info({
-      message: "Client unregistered",
+    logger.info("Client unregistered", {
       clientId,
       activeClients: this.clients.size,
     });
 
     if (this.clients.size === 0 && !this.shutdownTimer) {
-      logger.info({
-        message: "Starting shutdown timer - no active clients",
+      logger.info("Starting shutdown timer - no active clients", {
         graceSeconds: 5,
       });
 
@@ -91,9 +96,7 @@ export class ClientManager {
    */
   initiateShutdown() {
     if (this.clients.size === 0) {
-      logger.info({
-        message: "No active clients after grace period, initiating shutdown",
-      });
+      logger.info("No active clients after grace period, initiating shutdown");
 
       // Reset timer reference
       this.shutdownTimer = null;
@@ -101,8 +104,9 @@ export class ClientManager {
       // Output structured shutdown message
       console.log(
         JSON.stringify({
-          status: "shutting_down",
-          reason: "no_active_clients",
+          type: "info",
+          code: "CLIENT_SHUTDOWN",
+          message: "Shutting down due to no active clients",
           timestamp: new Date().toISOString(),
         })
       );
@@ -120,9 +124,7 @@ export class ClientManager {
     if (this.shutdownTimer) {
       clearTimeout(this.shutdownTimer);
       this.shutdownTimer = null;
-      logger.info({
-        message: "Shutdown cancelled manually",
-      });
+      logger.info("Shutdown cancelled manually");
       return true;
     }
     return false;

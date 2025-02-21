@@ -7,6 +7,12 @@ import {
   registerRoute,
   generateStartupMessage,
 } from "./utils/router.js";
+import {
+  ValidationError,
+  ServerError,
+  isMCPHubError,
+  wrapError,
+} from "./utils/errors.js";
 
 const VERSION = "1.0.0";
 const SERVER_ID = "mcp-hub";
@@ -18,6 +24,17 @@ app.use("/api", router);
 
 // SSE client set
 const sseClients = new Set();
+
+// Helper to determine HTTP status code from error type
+function getStatusCode(error) {
+  if (error instanceof ValidationError) return 400;
+  if (error instanceof ServerError) return 500;
+  if (error.code === "SERVER_NOT_FOUND") return 404;
+  if (error.code === "SERVER_NOT_CONNECTED") return 503;
+  if (error.code === "TOOL_NOT_FOUND" || error.code === "RESOURCE_NOT_FOUND")
+    return 404;
+  return 500;
+}
 
 // Send event to all SSE clients
 function broadcastEvent(event, data) {
@@ -39,7 +56,7 @@ class ServiceManager {
   }
 
   async initializeMCPHub() {
-    logger.info({ message: "Initializing MCP Hub" });
+    logger.info("Initializing MCP Hub");
     this.mcpHub = new MCPHub(this.config, { watch: this.watch });
     await this.mcpHub.initialize();
 
@@ -49,7 +66,7 @@ class ServiceManager {
 
   async startServer() {
     return new Promise((resolve, reject) => {
-      logger.info({ message: `Starting HTTP server on port ${this.port}` });
+      logger.info("Starting HTTP server", { port: this.port });
       this.server = app.listen(this.port, () => {
         const serverStatuses = this.mcpHub.getAllServerStatuses();
         // Output structured startup JSON
@@ -62,18 +79,20 @@ class ServiceManager {
           servers: serverStatuses,
           timestamp: new Date().toISOString(),
         };
-        // console.log(JSON.stringify(startupInfo));
         broadcastEvent("server_ready", startupInfo);
-        logger.info({
+        logger.info("MCP_HUB_STARTED", {
           status: "ready",
-          message: "MCP Hub server started",
           port: this.port,
         });
         resolve();
       });
 
       this.server.on("error", (error) => {
-        reject(error);
+        reject(
+          wrapError(error, "HTTP_SERVER_ERROR", {
+            port: this.port,
+          })
+        );
       });
     });
   }
@@ -81,24 +100,28 @@ class ServiceManager {
   async stopServer() {
     return new Promise((resolve, reject) => {
       if (!this.server) {
-        logger.warn({ message: "HTTP server already stopped" });
+        logger.warn("HTTP server already stopped");
         resolve();
         return;
       }
 
-      logger.info({ message: "Stopping HTTP server" });
+      logger.info("Stopping HTTP server");
       this.server.close((error) => {
         if (error) {
-          logger.error({
-            message: "Failed to stop HTTP server",
-            error: error.message,
-            stack: error.stack,
-          });
-          reject(error);
+          logger.error(
+            "SERVER_STOP_ERROR",
+            "Failed to stop HTTP server",
+            {
+              error: error.message,
+              stack: error.stack,
+            },
+            false
+          );
+          reject(wrapError(error, "SERVER_STOP_ERROR"));
           return;
         }
 
-        logger.info({ message: "HTTP server stopped" });
+        logger.info("HTTP server stopped");
         this.server = null;
         resolve();
       });
@@ -107,38 +130,46 @@ class ServiceManager {
 
   async stopMCPHub() {
     if (!this.mcpHub) {
-      logger.warn({ message: "MCP Hub already stopped" });
+      logger.warn("MCP Hub already stopped");
       return;
     }
 
-    logger.info({ message: "Stopping MCP Hub" });
+    logger.info("Stopping MCP Hub");
     try {
       await this.mcpHub.disconnectAll();
-      logger.info({ message: "MCP Hub stopped" });
+      logger.info("MCP Hub stopped");
       this.mcpHub = null;
     } catch (error) {
-      logger.error({
-        message: "Failed to stop MCP Hub",
-        error: error.message,
-        stack: error.stack,
-      });
+      logger.error(
+        "HUB_STOP_ERROR",
+        "Failed to stop MCP Hub",
+        {
+          error: error.message,
+          stack: error.stack,
+        },
+        false
+      );
     }
   }
 
   setupSignalHandlers() {
     const shutdown = async (signal) => {
-      logger.info({ message: `Received signal: ${signal}` });
+      logger.info("Received shutdown signal", { signal });
       try {
         await this.shutdown();
-        logger.info({ message: "Shutdown complete" });
+        logger.info("Shutdown complete");
         process.exit(0);
       } catch (error) {
-        logger.error({
-          message: "Shutdown failed",
-          error: error.message,
-          stack: error.stack,
-        });
-        process.exit(1);
+        logger.error(
+          "SHUTDOWN_ERROR",
+          "Shutdown failed",
+          {
+            error: error.message,
+            stack: error.stack,
+          },
+          true,
+          1
+        );
       }
     };
 
@@ -147,7 +178,7 @@ class ServiceManager {
   }
 
   async shutdown() {
-    logger.info({ message: "Shutting down" });
+    logger.info("Shutting down");
 
     // Notify all clients before shutdown
     broadcastEvent("server_shutdown", {
@@ -200,10 +231,7 @@ registerRoute(
   (req, res) => {
     const { clientId } = req.body;
     if (!clientId) {
-      return res.status(400).json({
-        error: "Missing required field: clientId",
-        timestamp: new Date().toISOString(),
-      });
+      throw new ValidationError("Missing client ID", { field: "clientId" });
     }
 
     const activeClients = clientManager.registerClient(clientId);
@@ -232,10 +260,7 @@ registerRoute(
   (req, res) => {
     const { clientId } = req.body;
     if (!clientId) {
-      return res.status(400).json({
-        error: "Missing required field: clientId",
-        timestamp: new Date().toISOString(),
-      });
+      throw new ValidationError("Missing client ID", { field: "clientId" });
     }
 
     const activeClients = clientManager.unregisterClient(clientId);
@@ -287,20 +312,16 @@ registerRoute(
   "/servers/:name/info",
   "Get status of a specific server",
   (req, res) => {
-    const name = req.params.name;
-    const status = serviceManager.mcpHub.getServerStatus(name);
-
-    if (!status) {
-      return res.status(404).json({
-        error: `Server '${name}' not found`,
+    const { name } = req.params;
+    try {
+      const status = serviceManager.mcpHub.getServerStatus(name);
+      res.json({
+        server: status,
         timestamp: new Date().toISOString(),
       });
+    } catch (error) {
+      throw wrapError(error, "SERVER_NOT_FOUND", { server: name });
     }
-
-    res.json({
-      server: status,
-      timestamp: new Date().toISOString(),
-    });
   }
 );
 
@@ -309,38 +330,12 @@ registerRoute(
   "POST",
   "/servers/:name/tools",
   "Execute a tool on a specific server",
-  async (req, res, next) => {
+  async (req, res) => {
     const { name } = req.params;
     const { tool, arguments: args } = req.body;
 
     if (!tool) {
-      return res.status(400).json({
-        error: "Missing required field: tool",
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    const status = serviceManager.mcpHub.getServerStatus(name);
-
-    if (!status) {
-      return res.status(404).json({
-        error: `Server '${name}' not found`,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    if (status.status !== "connected") {
-      return res.status(400).json({
-        error: `Server '${name}' is not connected (status: ${status.status})`,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    if (!status.tools.find((t) => t.name === tool)) {
-      return res.status(404).json({
-        error: `Tool '${tool}' not found on server '${name}'`,
-        timestamp: new Date().toISOString(),
-      });
+      throw new ValidationError("Missing tool name", { field: "tool" });
     }
 
     try {
@@ -354,7 +349,11 @@ registerRoute(
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      next(error);
+      throw wrapError(error, error.code || "TOOL_EXECUTION_ERROR", {
+        server: name,
+        tool,
+        ...(error.data || {}),
+      });
     }
   }
 );
@@ -364,31 +363,12 @@ registerRoute(
   "POST",
   "/servers/:name/resources",
   "Access a resource on a specific server",
-  async (req, res, next) => {
+  async (req, res) => {
     const { name } = req.params;
     const { uri } = req.body;
 
     if (!uri) {
-      return res.status(400).json({
-        error: "Missing required field: uri",
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    const status = serviceManager.mcpHub.getServerStatus(name);
-
-    if (!status) {
-      return res.status(404).json({
-        error: `Server '${name}' not found`,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    if (status.status !== "connected") {
-      return res.status(400).json({
-        error: `Server '${name}' is not connected (status: ${status.status})`,
-        timestamp: new Date().toISOString(),
-      });
+      throw new ValidationError("Missing resource URI", { field: "uri" });
     }
 
     try {
@@ -398,25 +378,34 @@ registerRoute(
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      next(error);
+      throw wrapError(error, error.code || "RESOURCE_READ_ERROR", {
+        server: name,
+        uri,
+        ...(error.data || {}),
+      });
     }
   }
 );
 
 // Error handler middleware
 router.use((err, req, res, next) => {
-  logger.error({
-    message: "Request error",
-    error: err.message,
-    stack: err.stack,
-    path: req.path,
-    method: req.method,
-  });
+  // Determine if it's our custom error or needs wrapping
+  const error = isMCPHubError(err)
+    ? err
+    : wrapError(err, "REQUEST_ERROR", {
+        path: req.path,
+        method: req.method,
+      });
+
+  // Log error with appropriate level/data
+  logger.error(error.code, error.message, error.data, false);
 
   // Only send error response if headers haven't been sent
   if (!res.headersSent) {
-    res.status(500).json({
-      error: err.message,
+    res.status(getStatusCode(error)).json({
+      error: error.message,
+      code: error.code,
+      data: error.data,
       timestamp: new Date().toISOString(),
     });
   }
@@ -431,26 +420,23 @@ export async function startServer({ port, config, watch = false } = {}) {
     await serviceManager.startServer();
     serviceManager.setupSignalHandlers();
   } catch (error) {
-    if (error.code === "EADDRINUSE") {
-      logger.error({
-        message: "Port already in use",
-        port: port,
-        error: error.message,
-        stack: error.stack,
-      });
-      console.error(
-        `❌ Port ${port} is already in use. Please specify a different port or kill the process using port ${port}.`
-      );
-      serviceManager.server = null;
-    } else {
-      logger.error({
-        message: "Failed to start server",
-        error: error.message,
-        stack: error.stack,
-      });
-    }
+    const wrappedError =
+      error.code === "EADDRINUSE"
+        ? new ServerError("Port already in use", {
+            port,
+            error: error.message,
+          })
+        : wrapError(error, "SERVER_START_ERROR");
+
+    logger.error(
+      wrappedError.code,
+      wrappedError.message,
+      wrappedError.data,
+      true,
+      error.code === "EADDRINUSE" ? 0 : 1
+    );
+
     await serviceManager.shutdown();
-    process.exit(1);
   }
 }
 

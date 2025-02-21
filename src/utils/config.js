@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import { watch } from "fs";
 import { EventEmitter } from "events";
 import logger from "./logger.js";
+import { ConfigError, wrapError } from "./errors.js";
 
 export class ConfigManager extends EventEmitter {
   constructor(configPathOrObject) {
@@ -30,7 +31,7 @@ export class ConfigManager extends EventEmitter {
 
   async loadConfig() {
     if (!this.configPath) {
-      throw new Error("No config path specified");
+      throw new ConfigError("No config path specified");
     }
 
     try {
@@ -39,39 +40,59 @@ export class ConfigManager extends EventEmitter {
 
       // Validate config structure
       if (!newConfig.mcpServers || typeof newConfig.mcpServers !== "object") {
-        throw new Error(
-          "Invalid config: missing or invalid 'mcpServers' object"
-        );
+        throw new ConfigError("Missing or invalid mcpServers configuration", {
+          config: newConfig,
+        });
       }
 
       // Validate each server configuration
       for (const [name, server] of Object.entries(newConfig.mcpServers)) {
         if (!server.command) {
-          throw new Error(`Invalid config: server '${name}' missing 'command'`);
+          throw new ConfigError(`Server '${name}' missing command`, {
+            server: name,
+            config: server,
+          });
         }
         if (!Array.isArray(server.args)) {
           server.args = []; // Default to empty array if not provided
         }
         if (server.env && typeof server.env !== "object") {
-          throw new Error(`Invalid config: server '${name}' has invalid 'env'`);
+          throw new ConfigError(
+            `Server '${name}' has invalid environment config`,
+            {
+              server: name,
+              env: server.env,
+            }
+          );
         }
       }
 
       this.config = newConfig;
-      logger.info({
-        message: "Config loaded successfully",
+      logger.info("Config loaded successfully", {
         path: this.configPath,
         serverCount: Object.keys(newConfig.mcpServers).length,
       });
 
       return this.config;
     } catch (error) {
-      logger.error({
-        message: "Failed to load config",
+      if (error instanceof ConfigError) {
+        throw error; // Re-throw our custom errors
+      }
+      if (error.code === "ENOENT") {
+        throw new ConfigError("Config file not found", {
+          path: this.configPath,
+        });
+      }
+      if (error instanceof SyntaxError) {
+        throw new ConfigError("Invalid JSON in config file", {
+          path: this.configPath,
+          parseError: error.message,
+        });
+      }
+      // Wrap any other errors
+      throw wrapError(error, "CONFIG_READ_ERROR", {
         path: this.configPath,
-        error: error.message,
       });
-      throw error;
     }
   }
 
@@ -83,8 +104,7 @@ export class ConfigManager extends EventEmitter {
     try {
       this.watcher = watch(this.configPath, async (eventType) => {
         if (eventType === "change") {
-          logger.info({
-            message: "Config file changed, reloading",
+          logger.info("Config file changed, reloading", {
             path: this.configPath,
           });
 
@@ -92,32 +112,37 @@ export class ConfigManager extends EventEmitter {
             const newConfig = await this.loadConfig();
             this.emit("configChanged", newConfig);
           } catch (error) {
-            logger.error({
-              message: "Error reloading config after change",
-              error: error.message,
-            });
+            // Don't throw here as this is an async event handler
+            logger.error(
+              error.code || "CONFIG_RELOAD_ERROR",
+              "Error reloading config after change",
+              error instanceof ConfigError
+                ? error.data
+                : { error: error.message },
+              false
+            );
           }
         }
       });
 
       // Handle watcher errors
       this.watcher.on("error", (error) => {
-        logger.error({
-          message: "Config watcher error",
-          error: error.message,
-        });
+        logger.error(
+          "CONFIG_WATCH_ERROR",
+          "Config watcher error",
+          { error: error.message },
+          false
+        );
       });
 
-      logger.info({
-        message: "Started watching config file",
+      logger.info("Started watching config file", {
         path: this.configPath,
       });
     } catch (error) {
-      logger.error({
-        message: "Failed to start config watcher",
+      throw new ConfigError("Failed to start config watcher", {
+        path: this.configPath,
         error: error.message,
       });
-      throw error;
     }
   }
 

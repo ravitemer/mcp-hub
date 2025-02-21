@@ -8,6 +8,12 @@ import {
   ReadResourceResultSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import logger from "./utils/logger.js";
+import {
+  ConnectionError,
+  ToolError,
+  ResourceError,
+  wrapError,
+} from "./utils/errors.js";
 
 export class MCPConnection {
   constructor(name, config) {
@@ -59,19 +65,26 @@ export class MCPConnection {
 
       // Handle transport errors
       this.transport.onerror = (error) => {
-        logger.error({
-          message: "Transport error",
-          server: this.name,
-          error: error.message,
-        });
+        const connectionError = new ConnectionError(
+          "Failed to communicate with server",
+          {
+            server: this.name,
+            error: error.message,
+          }
+        );
+        logger.error(
+          connectionError.code,
+          connectionError.message,
+          connectionError.data,
+          false
+        );
         this.error = error.message;
         this.status = "disconnected";
         this.startTime = null;
       };
 
       this.transport.onclose = () => {
-        logger.info({
-          message: "Transport closed",
+        logger.info("Transport connection closed", {
           server: this.name,
         });
         this.status = "disconnected";
@@ -83,11 +96,11 @@ export class MCPConnection {
       if (stderrStream) {
         stderrStream.on("data", (data) => {
           const errorOutput = data.toString();
-          logger.error({
-            message: "Server stderr",
+          const error = new ConnectionError("Server error output", {
             server: this.name,
             error: errorOutput,
           });
+          logger.error(error.code, error.message, error.data, false);
           this.error = errorOutput;
         });
       }
@@ -103,8 +116,7 @@ export class MCPConnection {
       this.startTime = Date.now();
       this.error = null;
 
-      logger.info({
-        message: "MCP client connected",
+      logger.info("MCP client connected", {
         server: this.name,
         tools: this.tools.length,
         resources: this.resources.length,
@@ -113,7 +125,11 @@ export class MCPConnection {
       // Ensure proper cleanup on error
       this.error = error.message;
       await this.disconnect();
-      throw error;
+
+      throw new ConnectionError("Failed to establish server connection", {
+        server: this.name,
+        error: error.message,
+      });
     }
   }
 
@@ -124,8 +140,7 @@ export class MCPConnection {
         const response = await this.client.request({ method }, schema);
         return response;
       } catch (error) {
-        logger.warn({
-          message: `Server does not support ${method}`,
+        logger.warn(`Server does not support ${method}`, {
           server: this.name,
           error: error.message,
         });
@@ -150,8 +165,7 @@ export class MCPConnection {
       this.tools = toolsResponse?.tools || [];
       this.resources = resourcesResponse?.resources || [];
 
-      logger.info({
-        message: "Updated server capabilities",
+      logger.info("Updated server capabilities", {
         server: this.name,
         toolCount: this.tools.length,
         resourceCount: this.resources.length,
@@ -164,8 +178,7 @@ export class MCPConnection {
       });
     } catch (error) {
       // Only log as warning since missing capabilities are expected in some cases
-      logger.warn({
-        message: "Error updating capabilities",
+      logger.warn("Error updating capabilities", {
         server: this.name,
         error: error.message,
       });
@@ -179,16 +192,27 @@ export class MCPConnection {
 
   async callTool(toolName, args) {
     if (!this.client) {
-      throw new Error(`Server "${this.name}" is not initialized`);
+      throw new ToolError("Server not initialized", {
+        server: this.name,
+        tool: toolName,
+      });
     }
 
     if (this.status !== "connected") {
-      throw new Error(`Server "${this.name}" is not connected`);
+      throw new ToolError("Server not connected", {
+        server: this.name,
+        tool: toolName,
+        status: this.status,
+      });
     }
 
     const tool = this.tools.find((t) => t.name === toolName);
     if (!tool) {
-      throw new Error(`Tool "${toolName}" not found on server "${this.name}"`);
+      throw new ToolError("Tool not found", {
+        server: this.name,
+        tool: toolName,
+        availableTools: this.tools.map((t) => t.name),
+      });
     }
 
     try {
@@ -203,23 +227,28 @@ export class MCPConnection {
         CallToolResultSchema
       );
     } catch (error) {
-      logger.error({
-        message: "Tool execution failed",
+      throw wrapError(error, "TOOL_EXECUTION_ERROR", {
         server: this.name,
         tool: toolName,
-        error: error.message,
+        args,
       });
-      throw error;
     }
   }
 
   async readResource(uri) {
     if (!this.client) {
-      throw new Error(`Server "${this.name}" is not initialized`);
+      throw new ResourceError("Server not initialized", {
+        server: this.name,
+        uri,
+      });
     }
 
     if (this.status !== "connected") {
-      throw new Error(`Server "${this.name}" is not connected`);
+      throw new ResourceError("Server not connected", {
+        server: this.name,
+        uri,
+        status: this.status,
+      });
     }
 
     const isValidResource =
@@ -231,7 +260,12 @@ export class MCPConnection {
       });
 
     if (!isValidResource) {
-      throw new Error(`Resource "${uri}" not found on server "${this.name}"`);
+      throw new ResourceError("Resource not found", {
+        server: this.name,
+        uri,
+        availableResources: this.resources.map((r) => r.uri),
+        availableTemplates: this.resourceTemplates.map((t) => t.uriTemplate),
+      });
     }
 
     try {
@@ -243,13 +277,10 @@ export class MCPConnection {
         ReadResourceResultSchema
       );
     } catch (error) {
-      logger.error({
-        message: "Resource read failed",
+      throw wrapError(error, "RESOURCE_READ_ERROR", {
         server: this.name,
         uri,
-        error: error.message,
       });
-      throw error;
     }
   }
 
