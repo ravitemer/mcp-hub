@@ -84,7 +84,7 @@ describe("ConfigManager", () => {
 
       configManager = new ConfigManager("/path/to/config.json");
       await expect(configManager.loadConfig()).rejects.toThrow(
-        "Invalid config: missing or invalid 'mcpServers' object"
+        "Missing or invalid mcpServers configuration"
       );
     });
 
@@ -100,7 +100,7 @@ describe("ConfigManager", () => {
 
       configManager = new ConfigManager("/path/to/config.json");
       await expect(configManager.loadConfig()).rejects.toThrow(
-        "Invalid config: server 'test' missing 'command'"
+        "Server 'test' missing command"
       );
     });
 
@@ -135,7 +135,7 @@ describe("ConfigManager", () => {
 
       configManager = new ConfigManager("/path/to/config.json");
       await expect(configManager.loadConfig()).rejects.toThrow(
-        "Invalid config: server 'test' has invalid 'env'"
+        "Server 'test' has invalid environment config"
       );
     });
   });

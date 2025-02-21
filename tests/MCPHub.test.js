@@ -3,6 +3,12 @@ import { MCPHub } from "../src/MCPHub.js";
 import { ConfigManager } from "../src/utils/config.js";
 import { MCPConnection } from "../src/MCPConnection.js";
 import logger from "../src/utils/logger.js";
+import {
+  ServerError,
+  ConnectionError,
+  ConfigError,
+  wrapError,
+} from "../src/utils/errors.js";
 
 // Mock ConfigManager
 vi.mock("../src/utils/config.js", () => {
@@ -127,23 +133,19 @@ describe("MCPHub", () => {
     it("should skip disabled servers", async () => {
       await mcpHub.initialize();
 
-      expect(logger.info).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: "Skipping disabled server",
-          server: "server2",
-        })
-      );
+      expect(logger.info).toHaveBeenCalledWith("Skipping disabled server", {
+        server: "server2",
+      });
     });
 
     it("should handle server connection errors", async () => {
       const error = new Error("Connection failed");
       connection.connect.mockRejectedValueOnce(error);
 
-      await mcpHub.connectServer("server1", mockConfig.mcpServers.server1);
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: "Failed to connect server",
+      await expect(
+        mcpHub.connectServer("server1", mockConfig.mcpServers.server1)
+      ).rejects.toThrow(
+        new ServerError(`Failed to connect server "server1"`, {
           server: "server1",
           error: error.message,
         })
@@ -166,11 +168,13 @@ describe("MCPHub", () => {
       await mcpHub.disconnectServer("server1");
 
       expect(logger.error).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: "Error disconnecting server",
+        "SERVER_DISCONNECT_ERROR",
+        "Error disconnecting server",
+        {
           server: "server1",
           error: error.message,
-        })
+        },
+        false
       );
       expect(mcpHub.connections.has("server1")).toBe(false);
     });
@@ -200,7 +204,11 @@ describe("MCPHub", () => {
 
     it("should throw error when calling tool on non-existent server", async () => {
       await expect(mcpHub.callTool("invalid", "test-tool", {})).rejects.toThrow(
-        'Server "invalid" not found'
+        new ServerError("Server not found", {
+          server: "invalid",
+          operation: "tool_call",
+          tool: "test-tool",
+        })
       );
     });
 
@@ -213,7 +221,13 @@ describe("MCPHub", () => {
     it("should throw error when reading resource from non-existent server", async () => {
       await expect(
         mcpHub.readResource("invalid", "resource://test")
-      ).rejects.toThrow('Server "invalid" not found');
+      ).rejects.toThrow(
+        new ServerError("Server not found", {
+          server: "invalid",
+          operation: "resource_read",
+          uri: "resource://test",
+        })
+      );
     });
   });
 
@@ -231,10 +245,12 @@ describe("MCPHub", () => {
       });
     });
 
-    it("should return undefined for non-existent server status", () => {
-      const status = mcpHub.getServerStatus("invalid");
-
-      expect(status).toBeUndefined();
+    it("should throw error for non-existent server status", () => {
+      expect(() => mcpHub.getServerStatus("invalid")).toThrow(
+        new ServerError("Server not found", {
+          server: "invalid",
+        })
+      );
     });
 
     it("should get all server statuses", () => {

@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MCPConnection } from "../src/MCPConnection.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import {
+  ConnectionError,
+  ToolError,
+  ResourceError,
+  wrapError,
+} from "../src/utils/errors.js";
 
 // Mock MCP SDK
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
@@ -95,7 +101,12 @@ describe("MCPConnection", () => {
       const error = new Error("Connection failed");
       client.connect.mockRejectedValueOnce(error);
 
-      await expect(connection.connect()).rejects.toThrow(error);
+      await expect(connection.connect()).rejects.toThrow(
+        new ConnectionError("Failed to establish server connection", {
+          server: "test-server",
+          error: error.message,
+        })
+      );
       expect(connection.status).toBe("disconnected");
       expect(connection.error).toBe(error.message);
     });
@@ -202,7 +213,11 @@ describe("MCPConnection", () => {
 
     it("should throw error for non-existent tool", async () => {
       await expect(connection.callTool("invalid-tool", {})).rejects.toThrow(
-        'Tool "invalid-tool" not found'
+        new ToolError("Tool not found", {
+          server: "test-server",
+          tool: "invalid-tool",
+          availableTools: ["test-tool"],
+        })
       );
     });
 
@@ -210,7 +225,10 @@ describe("MCPConnection", () => {
       connection.client = null;
 
       await expect(connection.callTool("test-tool", {})).rejects.toThrow(
-        'Server "test-server" is not initialized'
+        new ToolError("Server not initialized", {
+          server: "test-server",
+          tool: "test-tool",
+        })
       );
     });
 
@@ -218,7 +236,13 @@ describe("MCPConnection", () => {
       const error = new Error("Tool failed");
       client.request.mockRejectedValueOnce(error);
 
-      await expect(connection.callTool("test-tool", {})).rejects.toThrow(error);
+      await expect(connection.callTool("test-tool", {})).rejects.toThrow(
+        wrapError(error, "TOOL_EXECUTION_ERROR", {
+          server: "test-server",
+          tool: "test-tool",
+          args: {},
+        })
+      );
     });
   });
 
@@ -262,14 +286,24 @@ describe("MCPConnection", () => {
     it("should throw error for non-existent resource", async () => {
       await expect(
         connection.readResource("invalid://resource")
-      ).rejects.toThrow('Resource "invalid://resource" not found');
+      ).rejects.toThrow(
+        new ResourceError("Resource not found", {
+          server: "test-server",
+          uri: "invalid://resource",
+          availableResources: ["test://resource"],
+          availableTemplates: ["template://{param}"],
+        })
+      );
     });
 
     it("should throw error when not connected", async () => {
       connection.client = null;
 
       await expect(connection.readResource("test://resource")).rejects.toThrow(
-        'Server "test-server" is not initialized'
+        new ResourceError("Server not initialized", {
+          server: "test-server",
+          uri: "test://resource",
+        })
       );
     });
 
@@ -278,7 +312,10 @@ describe("MCPConnection", () => {
       client.request.mockRejectedValueOnce(error);
 
       await expect(connection.readResource("test://resource")).rejects.toThrow(
-        error
+        wrapError(error, "RESOURCE_READ_ERROR", {
+          server: "test-server",
+          uri: "test://resource",
+        })
       );
     });
   });

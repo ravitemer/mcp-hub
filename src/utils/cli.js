@@ -14,11 +14,17 @@ import {
 // Custom failure handler for yargs
 function handleParseError(msg, err) {
   // Ensure CLI parsing errors exit immediately with proper code
-  logger.error("CLI_ARGS_ERROR", "Invalid command line arguments", {
-    message: msg || "Missing required arguments",
-    help: "Use --help to see usage information",
-    error: err?.message,
-  });
+  logger.error(
+    "CLI_ARGS_ERROR",
+    "Invalid command line arguments",
+    {
+      message: msg || "Missing required arguments",
+      help: "Use --help to see usage information",
+      error: err?.message,
+    },
+    true,
+    1
+  ); // Add exit:true and exitCode:1
 }
 
 async function run() {
@@ -58,13 +64,19 @@ async function run() {
   } catch (error) {
     if (isMCPHubError(error)) {
       // Our errors are already structured, just pass them through
-      logger.error(error.code, error.message, error.data);
+      logger.error(error.code, error.message, error.data, true, 1);
     } else if (error.code === "EADDRINUSE") {
       // System errors with known codes get special handling
-      logger.error("PORT_IN_USE", `Port ${argv.port} is already in use`, {
-        port: argv.port,
-        error: error.message,
-      });
+      logger.error(
+        "PORT_IN_USE",
+        `Port ${argv.port} is already in use`,
+        {
+          port: argv.port,
+          error: error.message,
+        },
+        true,
+        1
+      );
     } else if (error.code === "ENOENT") {
       logger.error(
         "CONFIG_NOT_FOUND",
@@ -72,20 +84,13 @@ async function run() {
         {
           path: argv.config,
           error: error.message,
-        }
-      );
-    } else {
-      // Unexpected errors exit with code 1
-      logger.error(
-        "UNEXPECTED_ERROR",
-        "An unexpected error occurred while starting the server",
-        {
-          error: error.message,
-          stack: error.stack,
         },
         true,
         1
       );
+    } else {
+      // For any other error, kill the process
+      process.kill(process.pid, "SIGINT");
     }
   }
 }
@@ -93,14 +98,5 @@ async function run() {
 run().catch((error) => {
   // This catch block handles errors from the run() function itself
   // that weren't caught by the try/catch inside run()
-  logger.error(
-    "FATAL_ERROR",
-    "A fatal error occurred in the CLI",
-    {
-      error: error.message,
-      stack: error.stack,
-    },
-    true,
-    1
-  );
+  process.kill(process.pid, "SIGINT");
 });

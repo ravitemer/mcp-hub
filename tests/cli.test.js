@@ -15,7 +15,11 @@ vi.mock("../src/server.js", () => ({
 // Mock logger
 vi.mock("../src/utils/logger.js", () => ({
   default: {
-    error: vi.fn(),
+    error: vi.fn((code, message, data, exit, exitCode) => {
+      if (exit) {
+        process.exit(exitCode);
+      }
+    }),
   },
 }));
 
@@ -31,12 +35,8 @@ describe("CLI", () => {
     mockKill.mockReset();
     mockExit.mockReset();
 
-    // Mock process.exit to throw error
-    const exitError = new Error("Process exit");
-    process.exit = (code) => {
-      mockExit(code);
-      throw exitError;
-    };
+    // Mock process.exit
+    process.exit = mockExit;
   });
 
   afterEach(() => {
@@ -100,27 +100,13 @@ describe("CLI", () => {
 
   it("should fail when port is missing", async () => {
     setArgv(["--config", "./config.json"]);
-
-    let error;
-    try {
-      await import("../src/utils/cli.js");
-    } catch (e) {
-      error = e;
-    }
-
+    await import("../src/utils/cli.js");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("should fail when config is missing", async () => {
     setArgv(["--port", "3000"]);
-
-    let error;
-    try {
-      await import("../src/utils/cli.js");
-    } catch (e) {
-      error = e;
-    }
-
+    await import("../src/utils/cli.js");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
