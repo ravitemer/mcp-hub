@@ -190,6 +190,15 @@ export class MCPConnection {
     }
   }
 
+  /*
+  * | Scenario            | Example Response                                                                 |
+    |---------------------|----------------------------------------------------------------------------------|
+    | Text Output         | `{ "content": [{ "type": "text", "text": "Hello, World!" }], "isError": false }` |
+    | Image Output        | `{ "content": [{ "type": "image", "data": "base64data...", "mimeType": "image/png" }], "isError": false }` |
+    | Text Resource       | `{ "content": [{ "type": "resource", "resource": { "uri": "file.txt", "text": "Content" } }], "isError": false }` |
+    | Binary Resource     | `{ "content": [{ "type": "resource", "resource": { "uri": "image.jpg", "blob": "base64data...", "mimeType": "image/jpeg" } }], "isError": false }` |
+    | Error Case          | `{ "content": [], "isError": true }` (Note: Error details might be in JSON-RPC level) |
+    */
   async callTool(toolName, args) {
     if (!this.client) {
       throw new ToolError("Server not initialized", {
@@ -215,6 +224,15 @@ export class MCPConnection {
       });
     }
 
+    //check args, it should be either a list or an object or null
+    if (args && !Array.isArray(args) && typeof args !== "object") {
+      throw new ToolError("Invalid arguments", {
+        server: this.name,
+        tool: toolName,
+        args,
+      });
+    }
+
     try {
       return await this.client.request(
         {
@@ -234,6 +252,16 @@ export class MCPConnection {
       });
     }
   }
+
+  /*
+  * | Scenario                     | Example Response                                                                 |
+    |------------------------------|----------------------------------------------------------------------------------|
+    | Text Resource                | `{ "contents": [{ "uri": "file.txt", "text": "This is the content of the file." }] }` |
+    | Binary Resource without `mimeType` | `{ "contents": [{ "uri": "image.jpg", "blob": "base64encodeddata..." }] }`         |
+    | Binary Resource with `mimeType` | `{ "contents": [{ "uri": "image.jpg", "mimeType": "image/jpeg", "blob": "base64encodeddata..." }] }` |
+    | Multiple Resources           | `{ "contents": [{ "uri": "file1.txt", "text": "Content of file1" }, { "uri": "file2.png", "blob": "base64encodeddata..." }] }` |
+    | No Resources (empty)         | `{ "contents": [] }`                                                             |
+  */
 
   async readResource(uri) {
     if (!this.client) {

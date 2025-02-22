@@ -21,8 +21,10 @@ function registerRoute(method, path, description, handler) {
     description,
   });
 
-  // Register actual route
-  router[method.toLowerCase()](path, handler);
+  // Register actual route with error handling wrapper
+  router[method.toLowerCase()](path, (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  });
 }
 
 /**

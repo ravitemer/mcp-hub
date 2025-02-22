@@ -398,7 +398,7 @@ router.use((err, req, res, next) => {
       });
 
   // Log error with appropriate level/data
-  logger.error(error.code, error.message, error.data, false);
+  // logger.error(error.code, error.message, error.data, false);
 
   // Only send error response if headers haven't been sent
   if (!res.headersSent) {
