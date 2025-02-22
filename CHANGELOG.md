@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-02-22
+
+### Added
+
+- Enhanced MCPConnection with detailed response examples for various scenarios (text, image, resources)
+- Added argument validation for tool calls to ensure correct parameter types
+- Improved error handling in HTTP router with Promise error handling wrapper
+
 ## [1.1.0] - 2025-02-21
 
 ### Added
