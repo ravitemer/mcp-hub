@@ -84,7 +84,7 @@ export class MCPConnection {
       };
 
       this.transport.onclose = () => {
-        logger.info("Transport connection closed", {
+        logger.info(`Transport connection closed for server '${this.name}'`, {
           server: this.name,
         });
         this.status = "disconnected";
@@ -116,7 +116,7 @@ export class MCPConnection {
       this.startTime = Date.now();
       this.error = null;
 
-      logger.info("MCP client connected", {
+      logger.info(`'${this.name}' MCP server connected`, {
         server: this.name,
         tools: this.tools.length,
         resources: this.resources.length,
@@ -140,10 +140,13 @@ export class MCPConnection {
         const response = await this.client.request({ method }, schema);
         return response;
       } catch (error) {
-        logger.warn(`Server does not support ${method}`, {
-          server: this.name,
-          error: error.message,
-        });
+        logger.warn(
+          `Server '${this.name}' does not support capability '${method}'`,
+          {
+            server: this.name,
+            error: error.message,
+          }
+        );
         return null;
       }
     };
@@ -165,7 +168,7 @@ export class MCPConnection {
       this.tools = toolsResponse?.tools || [];
       this.resources = resourcesResponse?.resources || [];
 
-      logger.info("Updated server capabilities", {
+      logger.info(`Updated capabilities for server '${this.name}'`, {
         server: this.name,
         toolCount: this.tools.length,
         resourceCount: this.resources.length,
@@ -178,7 +181,7 @@ export class MCPConnection {
       });
     } catch (error) {
       // Only log as warning since missing capabilities are expected in some cases
-      logger.warn("Error updating capabilities", {
+      logger.warn(`Error updating capabilities for server '${this.name}'`, {
         server: this.name,
         error: error.message,
       });

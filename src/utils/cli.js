@@ -16,7 +16,7 @@ function handleParseError(msg, err) {
   // Ensure CLI parsing errors exit immediately with proper code
   logger.error(
     "CLI_ARGS_ERROR",
-    "Invalid command line arguments",
+    "Failed to parse command line arguments",
     {
       message: msg || "Missing required arguments",
       help: "Use --help to see usage information",
@@ -69,7 +69,7 @@ async function run() {
       // System errors with known codes get special handling
       logger.error(
         "PORT_IN_USE",
-        `Port ${argv.port} is already in use`,
+        `Failed to start server: Port ${argv.port} is already in use by another process`,
         {
           port: argv.port,
           error: error.message,
@@ -80,7 +80,7 @@ async function run() {
     } else if (error.code === "ENOENT") {
       logger.error(
         "CONFIG_NOT_FOUND",
-        `Config file not found: ${argv.config}`,
+        `Failed to start server: Configuration file not found at path ${argv.config}`,
         {
           path: argv.config,
           error: error.message,

@@ -66,7 +66,9 @@ class ServiceManager {
 
   async startServer() {
     return new Promise((resolve, reject) => {
-      logger.info("Starting HTTP server", { port: this.port });
+      logger.info(`Starting HTTP server on port ${this.port}`, {
+        port: this.port,
+      });
       this.server = app.listen(this.port, () => {
         const serverStatuses = this.mcpHub.getAllServerStatuses();
         // Output structured startup JSON
@@ -80,7 +82,7 @@ class ServiceManager {
           timestamp: new Date().toISOString(),
         };
         broadcastEvent("server_ready", startupInfo);
-        logger.info("MCP_HUB_STARTED", {
+        logger.info(`MCP_HUB_STARTED`, {
           status: "ready",
           port: this.port,
         });
@@ -100,12 +102,14 @@ class ServiceManager {
   async stopServer() {
     return new Promise((resolve, reject) => {
       if (!this.server) {
-        logger.warn("HTTP server already stopped");
+        logger.warn(
+          "HTTP server is already stopped and cannot be stopped again"
+        );
         resolve();
         return;
       }
 
-      logger.info("Stopping HTTP server");
+      logger.info("Stopping HTTP server and closing all connections");
       this.server.close((error) => {
         if (error) {
           logger.error(
@@ -121,7 +125,7 @@ class ServiceManager {
           return;
         }
 
-        logger.info("HTTP server stopped");
+        logger.info("HTTP server has been successfully stopped");
         this.server = null;
         resolve();
       });
@@ -130,14 +134,16 @@ class ServiceManager {
 
   async stopMCPHub() {
     if (!this.mcpHub) {
-      logger.warn("MCP Hub already stopped");
+      logger.warn("MCP Hub is already stopped and cannot be stopped again");
       return;
     }
 
-    logger.info("Stopping MCP Hub");
+    logger.info("Stopping MCP Hub and disconnecting all servers");
     try {
       await this.mcpHub.disconnectAll();
-      logger.info("MCP Hub stopped");
+      logger.info(
+        "MCP Hub has been successfully stopped and all servers disconnected"
+      );
       this.mcpHub = null;
     } catch (error) {
       logger.error(
@@ -154,10 +160,12 @@ class ServiceManager {
 
   setupSignalHandlers() {
     const shutdown = async (signal) => {
-      logger.info("Received shutdown signal", { signal });
+      logger.info(`Received ${signal} signal - initiating graceful shutdown`, {
+        signal,
+      });
       try {
         await this.shutdown();
-        logger.info("Shutdown complete");
+        logger.info("Graceful shutdown completed successfully");
         process.exit(0);
       } catch (error) {
         logger.error(
@@ -178,7 +186,7 @@ class ServiceManager {
   }
 
   async shutdown() {
-    logger.info("Shutting down");
+    logger.info("Starting graceful shutdown process");
 
     // Notify all clients before shutdown
     broadcastEvent("server_shutdown", {
@@ -416,9 +424,9 @@ export async function startServer({ port, config, watch = false } = {}) {
   serviceManager = new ServiceManager(config, port, watch);
 
   try {
+    serviceManager.setupSignalHandlers();
     await serviceManager.initializeMCPHub();
     await serviceManager.startServer();
-    serviceManager.setupSignalHandlers();
   } catch (error) {
     const wrappedError =
       error.code === "EADDRINUSE"

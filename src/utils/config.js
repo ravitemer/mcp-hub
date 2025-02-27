@@ -68,7 +68,7 @@ export class ConfigManager extends EventEmitter {
       }
 
       this.config = newConfig;
-      logger.info("Config loaded successfully", {
+      logger.info(`Config loaded successfully from ${this.configPath}`, {
         path: this.configPath,
         serverCount: Object.keys(newConfig.mcpServers).length,
       });
@@ -104,7 +104,7 @@ export class ConfigManager extends EventEmitter {
     try {
       this.watcher = watch(this.configPath, async (eventType) => {
         if (eventType === "change") {
-          logger.info("Config file changed, reloading", {
+          logger.info(`Config file at ${this.configPath} changed, reloading`, {
             path: this.configPath,
           });
 
@@ -135,7 +135,7 @@ export class ConfigManager extends EventEmitter {
         );
       });
 
-      logger.info("Started watching config file", {
+      logger.info(`Started watching config file at ${this.configPath}`, {
         path: this.configPath,
       });
     } catch (error) {
@@ -150,8 +150,7 @@ export class ConfigManager extends EventEmitter {
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
-      logger.info({
-        message: "Stopped watching config file",
+      logger.info(`Stopped watching config file at ${this.configPath}`, {
         path: this.configPath,
       });
     }

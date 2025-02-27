@@ -41,17 +41,19 @@ export class MCPHub {
   async startConfiguredServers() {
     const config = this.configManager.getConfig();
     const servers = Object.entries(config?.mcpServers || {});
-    logger.info("Starting configured servers", { count: servers.length });
+    logger.info(`Starting ${servers.length} configured MCP servers`, {
+      count: servers.length,
+    });
 
     for (const [name, serverConfig] of servers) {
       try {
         // Skip disabled servers
         if (serverConfig.disabled) {
-          logger.info("Skipping disabled server", { server: name });
+          logger.info(`Skipping disabled server '${name}'`, { server: name });
           continue;
         }
 
-        logger.info("Starting server", { server: name });
+        logger.info(`Starting MCP server '${name}'`, { server: name });
         await this.connectServer(name, serverConfig);
       } catch (error) {
         // Don't throw here as we want to continue with other servers
@@ -124,9 +126,12 @@ export class MCPHub {
   }
 
   async disconnectAll() {
-    logger.info("Disconnecting all servers", {
-      count: this.connections.size,
-    });
+    logger.info(
+      `Disconnecting all servers (${this.connections.size} active connections)`,
+      {
+        count: this.connections.size,
+      }
+    );
 
     const results = await Promise.allSettled(
       Array.from(this.connections.keys()).map((name) =>
