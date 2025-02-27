@@ -159,7 +159,7 @@ class ServiceManager {
   }
 
   setupSignalHandlers() {
-    const shutdown = async (signal) => {
+    const shutdown = (signal) => async () => {
       logger.info(`Received ${signal} signal - initiating graceful shutdown`, {
         signal,
       });
@@ -181,8 +181,8 @@ class ServiceManager {
       }
     };
 
-    process.on("SIGTERM", shutdown);
-    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown("SIGTERM"));
+    process.on("SIGINT", shutdown("SIGINT"));
   }
 
   async shutdown() {
