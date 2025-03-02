@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-03-02
+
+### Added
+
+- New `shutdown-delay` CLI option to control delay before server shutdown when no clients are connected
+- Enhanced logging messages with improved clarity and context across all components
+- More descriptive server status messages and operation feedback
+- Integration example with ravitemer/mcphub.nvim Neovim plugin
+
+### Changed
+
+- Simplified signal handler setup for more reliable graceful shutdown
+- Improved logging message clarity and contextual information
+- Reorganized server shutdown logic for better reliability
+
 ## [1.2.0] - 2025-02-22
 
 ### Added

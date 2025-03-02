@@ -43,6 +43,17 @@ Start the hub server:
 mcp-hub --port 3000 --config path/to/config.json
 ```
 
+### CLI Options
+
+```bash
+Options:
+  --port            Port to run the server on (default: 3000)
+  --config          Path to config file (required)
+  --watch           Watch config file for changes (default: false)
+  --shutdown-delay  Delay in milliseconds before shutting down when no clients are connected (default: 0)
+  -h, --help       Show help information
+```
+
 The server outputs JSON-formatted status messages on startup and state changes:
 
 ```json
@@ -56,6 +67,17 @@ The server outputs JSON-formatted status messages on startup and state changes:
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
+
+## Example Integrations
+
+### Neovim Integration
+
+The [ravitemer/mcphub.nvim](https://github.com/ravitemer/mcphub.nvim) plugin provides seamless integration with Neovim, allowing direct interaction with MCP Hub from your editor:
+
+- Execute MCP tools directly from Neovim
+- Access MCP resources within your editing workflow
+- Real-time status updates in Neovim
+- Custom commands for common MCP operations
 
 ## Architecture
 
