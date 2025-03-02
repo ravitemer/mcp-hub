@@ -49,6 +49,12 @@ async function run() {
         type: "boolean",
         default: false,
       },
+      "shutdown-delay": {
+        describe:
+          "Delay in milliseconds before shutting down when no clients are connected",
+        type: "number",
+        default: 0,
+      },
     })
     .example("mcp-hub --port 3000 --config ./mcp-servers.json")
     .help("h")
@@ -60,6 +66,7 @@ async function run() {
       port: argv.port,
       config: argv.config,
       watch: argv.watch,
+      shutdownDelay: argv["shutdown-delay"],
     });
   } catch (error) {
     if (isMCPHubError(error)) {

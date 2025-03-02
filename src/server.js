@@ -47,9 +47,10 @@ let serviceManager = null;
 let clientManager = null;
 
 class ServiceManager {
-  constructor(config, port, watch = false) {
+  constructor(config, port, watch = false, shutdownDelay = 0) {
     this.config = config;
     this.port = port;
+    this.shutdownDelay = shutdownDelay;
     this.watch = watch;
     this.mcpHub = null;
     this.server = null;
@@ -60,8 +61,8 @@ class ServiceManager {
     this.mcpHub = new MCPHub(this.config, { watch: this.watch });
     await this.mcpHub.initialize();
 
-    // Initialize client manager
-    clientManager = new ClientManager();
+    // Initialize client manager with shutdown delay
+    clientManager = new ClientManager(this.shutdownDelay);
   }
 
   async startServer() {
@@ -420,8 +421,13 @@ router.use((err, req, res, next) => {
 });
 
 // Start the server with options
-export async function startServer({ port, config, watch = false } = {}) {
-  serviceManager = new ServiceManager(config, port, watch);
+export async function startServer({
+  port,
+  config,
+  watch = false,
+  shutdownDelay = 0,
+} = {}) {
+  serviceManager = new ServiceManager(config, port, watch, shutdownDelay);
 
   try {
     serviceManager.setupSignalHandlers();

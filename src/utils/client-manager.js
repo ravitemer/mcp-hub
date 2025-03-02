@@ -2,10 +2,10 @@ import logger from "./logger.js";
 import { ValidationError } from "./errors.js";
 
 export class ClientManager {
-  constructor(shutdownGracePeriodSeconds = 0) {
+  constructor(shutdownDelayMs = 0) {
     this.clients = new Set();
     this.shutdownTimer = null;
-    this.shutdownGracePeriodSeconds = shutdownGracePeriodSeconds;
+    this.shutdownDelayMs = shutdownDelayMs;
   }
 
   /**
@@ -66,16 +66,16 @@ export class ClientManager {
 
     if (this.clients.size === 0 && !this.shutdownTimer) {
       logger.info(
-        `Starting shutdown timer for ${this.shutdownGracePeriodSeconds} seconds - no active clients`,
+        `Starting shutdown timer for ${this.shutdownDelayMs}ms - no active clients`,
         {
-          graceSeconds: this.shutdownGracePeriodSeconds,
+          delayMs: this.shutdownDelayMs,
         }
       );
 
       // Start shutdown timer
       this.shutdownTimer = setTimeout(
         () => this.initiateShutdown(),
-        this.shutdownGracePeriodSeconds * 1000
+        this.shutdownDelayMs
       );
     }
 
@@ -114,7 +114,9 @@ export class ClientManager {
   initiateShutdown() {
     if (this.clients.size === 0) {
       logger.info(
-        `No active clients after ${this.shutdownGracePeriodSeconds} second grace period - initiating shutdown`
+        `No active clients after ${
+          this.shutdownDelayMs / 1000
+        } second grace period - initiating shutdown`
       );
 
       // Reset timer reference
