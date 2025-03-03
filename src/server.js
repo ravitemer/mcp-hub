@@ -14,7 +14,7 @@ import {
   wrapError,
 } from "./utils/errors.js";
 
-const VERSION = "1.0.0";
+const VERSION = "1.3.0";
 const SERVER_ID = "mcp-hub";
 
 // Create Express app
@@ -286,6 +286,43 @@ registerRoute(
       activeClients,
       timestamp: new Date().toISOString(),
     });
+  }
+);
+
+// Register restart endpoint
+registerRoute(
+  "POST",
+  "/restart",
+  "Restart all MCP servers",
+  async (req, res) => {
+    try {
+      logger.info("MCP_HUB_RESTARTING", {
+        message: "Restarting MCP Hub",
+        timestamp: new Date().toISOString(),
+      });
+
+      await serviceManager.mcpHub.updateConfig();
+
+      const serverStatuses = serviceManager.mcpHub.getAllServerStatuses();
+
+      logger.info("MCP_HUB_RESTARTED", {
+        message: "MCP Hub restarted successfully",
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json({
+        status: "ok",
+        server_id: SERVER_ID,
+        version: VERSION,
+        activeClients: clientManager?.getActiveClientCount() || 0,
+        timestamp: new Date().toISOString(),
+        servers: serverStatuses,
+      });
+    } catch (error) {
+      throw wrapError(error, "RESTART_ERROR", {
+        error: error.message,
+      });
+    }
   }
 );
 
