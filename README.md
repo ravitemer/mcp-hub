@@ -220,6 +220,48 @@ GET /api/servers
 GET /api/servers/:name/info
 ```
 
+#### Start Server
+
+```bash
+POST /api/servers/:name/start
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "server": {
+    "name": "example-server",
+    "status": "connected",
+    "uptime": 123
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+#### Stop Server
+
+```bash
+POST /api/servers/:name/stop?disable=true|false
+```
+
+The optional `disable` query parameter can be set to `true` to disable the server in the configuration.
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "server": {
+    "name": "example-server",
+    "status": "disconnected",
+    "uptime": 0
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
 ### Client Management
 
 #### Register Client

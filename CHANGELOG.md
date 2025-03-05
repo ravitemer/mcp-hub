@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2025-03-05
+
+### Added
+
+- New server control endpoints for start/stop operations with state management
+- Parallel execution for server startup and shutdown operations
+- Enhanced server state management with disable capability
+- Improved logging for server lifecycle operations
+- Better error handling and status reporting for server operations
+
 ## [1.3.0] - 2025-03-02
 
 ### Added
