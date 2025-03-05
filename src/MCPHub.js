@@ -41,11 +41,15 @@ export class MCPHub {
   async startConfiguredServers() {
     const config = this.configManager.getConfig();
     const servers = Object.entries(config?.mcpServers || {});
-    logger.info(`Starting ${servers.length} configured MCP servers`, {
-      count: servers.length,
-    });
+    logger.info(
+      `Starting ${servers.length} configured MCP servers in parallel`,
+      {
+        count: servers.length,
+      }
+    );
 
-    for (const [name, serverConfig] of servers) {
+    // Create and connect servers in parallel
+    const startPromises = servers.map(async ([name, serverConfig]) => {
       try {
         if (serverConfig.disabled === true) {
           logger.debug(`Skipping disabled MCP server '${name}'`, {
@@ -54,11 +58,17 @@ export class MCPHub {
         } else {
           logger.info(`Initializing MCP server '${name}'`, { server: name });
         }
+
         const connection = new MCPConnection(name, serverConfig);
         this.connections.set(name, connection);
         await connection.connect();
+
+        return {
+          name,
+          status: "success",
+          config: serverConfig,
+        };
       } catch (error) {
-        // Don't throw here as we want to continue with other servers
         logger.error(
           error.code || "SERVER_START_ERROR",
           "Failed to start server",
@@ -68,8 +78,30 @@ export class MCPHub {
           },
           false
         );
+
+        return {
+          name,
+          status: "error",
+          error: error.message,
+          config: serverConfig,
+        };
       }
-    }
+    });
+
+    // Wait for all servers to start and log summary
+    const results = await Promise.all(startPromises);
+
+    const successful = results.filter((r) => r.status === "success");
+    const failed = results.filter((r) => r.status === "error");
+    const disabled = results.filter((r) => r.config.disabled === true);
+
+    logger.info("Server initialization completed", {
+      total: servers.length,
+      successful: successful.length,
+      failed: failed.length,
+      disabled: disabled.length,
+      failedServers: failed.map((f) => f.name),
+    });
   }
 
   async startServer(name) {
@@ -154,33 +186,41 @@ export class MCPHub {
   }
 
   async disconnectAll() {
-    logger.info(
-      `Disconnecting all servers (${this.connections.size} active connections)`,
-      {
-        count: this.connections.size,
-      }
-    );
+    const serverNames = Array.from(this.connections.keys());
+    logger.info(`Disconnecting all servers in parallel`, {
+      count: serverNames.length,
+    });
 
     const results = await Promise.allSettled(
-      Array.from(this.connections.keys()).map((name) =>
-        this.disconnectServer(name)
-      )
+      serverNames.map((name) => this.disconnectServer(name))
     );
 
-    // Log any failures
-    results.forEach((result, index) => {
-      if (result.status === "rejected") {
-        const name = Array.from(this.connections.keys())[index];
-        logger.error(
-          "SERVER_DISCONNECT_ERROR",
-          "Failed to disconnect server during cleanup",
-          {
-            server: name,
-            error: result.reason?.message || "Unknown error",
-          },
-          false
-        );
-      }
+    const successful = results.filter((r) => r.status === "fulfilled");
+    const failed = results
+      .filter((r) => r.status === "rejected")
+      .map((r, i) => ({
+        name: serverNames[i],
+        error: r.reason?.message || "Unknown error",
+      }));
+
+    // Log failures
+    failed.forEach(({ name, error }) => {
+      logger.error(
+        "SERVER_DISCONNECT_ERROR",
+        "Failed to disconnect server during cleanup",
+        {
+          server: name,
+          error,
+        },
+        false
+      );
+    });
+
+    logger.info("Server shutdown completed", {
+      total: serverNames.length,
+      successful: successful.length,
+      failed: failed.length,
+      failedServers: failed.map((f) => f.name),
     });
 
     // Ensure connections map is cleared even if some disconnections failed
