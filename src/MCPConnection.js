@@ -24,15 +24,46 @@ export class MCPConnection {
     this.tools = [];
     this.resources = [];
     this.resourceTemplates = [];
-    this.status = "disconnected"; // disconnected | connecting | connected
+    this.status = config.disabled ? "disabled" : "disconnected"; // disabled | disconnected | connecting | connected
     this.error = null;
     this.startTime = null;
     this.lastStarted = null;
+    this.disabled = config.disabled || false;
+  }
+
+  async start() {
+    // If disabled, enable it
+    if (this.disabled) {
+      this.disabled = false;
+      this.config.disabled = false;
+      this.status = "disconnected";
+    }
+
+    // If already connected, return current state
+    if (this.status === "connected") {
+      return this.getServerInfo();
+    }
+
+    await this.connect();
+    return this.getServerInfo();
+  }
+
+  async stop(disable = false) {
+    if (disable) {
+      this.disabled = true;
+      this.config.disabled = true;
+    }
+
+    if (this.status !== "disconnected") {
+      await this.disconnect();
+    }
+
+    return this.getServerInfo();
   }
 
   // Calculate uptime in seconds
   getUptime() {
-    if (!this.startTime || this.status !== "connected") {
+    if (!this.startTime || !["connected", "disabled"].includes(this.status)) {
       return 0;
     }
     return Math.floor((Date.now() - this.startTime) / 1000);
@@ -40,6 +71,13 @@ export class MCPConnection {
 
   async connect() {
     try {
+      if (this.disabled) {
+        this.status = "disabled";
+        this.startTime = Date.now(); // Track uptime even when disabled
+        this.lastStarted = new Date().toISOString();
+        return;
+      }
+
       this.status = "connecting";
       this.lastStarted = new Date().toISOString();
 
@@ -140,7 +178,7 @@ export class MCPConnection {
         const response = await this.client.request({ method }, schema);
         return response;
       } catch (error) {
-        logger.warn(
+        logger.debug(
           `Server '${this.name}' does not support capability '${method}'`,
           {
             server: this.name,
@@ -168,17 +206,17 @@ export class MCPConnection {
       this.tools = toolsResponse?.tools || [];
       this.resources = resourcesResponse?.resources || [];
 
-      logger.info(`Updated capabilities for server '${this.name}'`, {
-        server: this.name,
-        toolCount: this.tools.length,
-        resourceCount: this.resources.length,
-        templateCount: this.resourceTemplates.length,
-        supportedCapabilities: {
-          tools: !!toolsResponse,
-          resources: !!resourcesResponse,
-          resourceTemplates: !!templatesResponse,
-        },
-      });
+      // logger.info(`Updated capabilities for server '${this.name}'`, {
+      //   server: this.name,
+      //   toolCount: this.tools.length,
+      //   resourceCount: this.resources.length,
+      //   templateCount: this.resourceTemplates.length,
+      //   supportedCapabilities: {
+      //     tools: !!toolsResponse,
+      //     resources: !!resourcesResponse,
+      //     resourceTemplates: !!templatesResponse,
+      //   },
+      // });
     } catch (error) {
       // Only log as warning since missing capabilities are expected in some cases
       logger.warn(`Error updating capabilities for server '${this.name}'`, {
@@ -315,6 +353,19 @@ export class MCPConnection {
     }
   }
 
+  async resetState() {
+    this.client = null;
+    this.transport = null;
+    this.tools = [];
+    this.resources = [];
+    this.resourceTemplates = [];
+    this.status = this.config.disabled ? "disabled" : "disconnected"; // disabled | disconnected | connecting | connected
+    this.error = null;
+    this.startTime = null;
+    this.lastStarted = null;
+    this.disabled = this.config.disabled || false;
+  }
+
   async disconnect() {
     if (this.transport) {
       await this.transport.close();
@@ -322,10 +373,7 @@ export class MCPConnection {
     if (this.client) {
       await this.client.close();
     }
-    this.status = "disconnected";
-    this.startTime = null;
-    this.client = null;
-    this.transport = null;
+    this.resetState();
   }
 
   getServerInfo() {

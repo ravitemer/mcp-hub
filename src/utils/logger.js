@@ -3,6 +3,21 @@
  */
 const logger = {
   /**
+   * Log a status update with standardized format
+   */
+  logUpdate(metadata = {}) {
+    console.log(
+      JSON.stringify({
+        type: "info",
+        code: "MCP_HUB_UPDATED",
+        message: "MCP Hub status updated",
+        data: metadata,
+        timestamp: new Date().toISOString(),
+      })
+    );
+  },
+
+  /**
    * Log informational message
    */
   info(message, data = {}) {

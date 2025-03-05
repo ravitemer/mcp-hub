@@ -25,6 +25,18 @@ app.use("/api", router);
 // SSE client set
 const sseClients = new Set();
 
+// Utility function to broadcast status updates
+function broadcastStatusUpdate(metadata = {}) {
+  // Send SSE event
+  broadcastEvent("server_status", {
+    ...metadata,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Log standardized update message
+  logger.logUpdate(metadata);
+}
+
 // Helper to determine HTTP status code from error type
 function getStatusCode(error) {
   if (error instanceof ValidationError) return 400;
@@ -289,39 +301,61 @@ registerRoute(
   }
 );
 
-// Register restart endpoint
+// Register server start endpoint
 registerRoute(
   "POST",
-  "/restart",
-  "Restart all MCP servers",
+  "/servers/:name/start",
+  "Start a server",
   async (req, res) => {
+    const { name } = req.params;
     try {
-      logger.info("MCP_HUB_RESTARTING", {
-        message: "Restarting MCP Hub",
-        timestamp: new Date().toISOString(),
-      });
+      const status = await serviceManager.mcpHub.startServer(name);
 
-      await serviceManager.mcpHub.updateConfig();
-
-      const serverStatuses = serviceManager.mcpHub.getAllServerStatuses();
-
-      logger.info("MCP_HUB_RESTARTED", {
-        message: "MCP Hub restarted successfully",
-        timestamp: new Date().toISOString(),
+      broadcastStatusUpdate({
+        action: "start",
+        server: name,
+        // status: status,
       });
 
       res.json({
         status: "ok",
-        server_id: SERVER_ID,
-        version: VERSION,
-        activeClients: clientManager?.getActiveClientCount() || 0,
+        server: status,
         timestamp: new Date().toISOString(),
-        servers: serverStatuses,
       });
     } catch (error) {
-      throw wrapError(error, "RESTART_ERROR", {
-        error: error.message,
+      throw wrapError(error, "START_ERROR", { server: name });
+    }
+  }
+);
+
+// Register server stop endpoint
+registerRoute(
+  "POST",
+  "/servers/:name/stop",
+  "Stop a server",
+  async (req, res) => {
+    const { name } = req.params;
+    const { disable } = req.query;
+    try {
+      const status = await serviceManager.mcpHub.stopServer(
+        name,
+        disable === "true"
+      );
+
+      broadcastStatusUpdate({
+        action: "stop",
+        server: name,
+        status: status,
+        disabled: disable === "true",
       });
+
+      res.json({
+        status: "ok",
+        server: status,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw wrapError(error, "STOP_ERROR", { server: name });
     }
   }
 );

@@ -47,14 +47,16 @@ export class MCPHub {
 
     for (const [name, serverConfig] of servers) {
       try {
-        // Skip disabled servers
-        if (serverConfig.disabled) {
-          logger.info(`Skipping disabled server '${name}'`, { server: name });
-          continue;
+        if (serverConfig.disabled === true) {
+          logger.debug(`Skipping disabled MCP server '${name}'`, {
+            server: name,
+          });
+        } else {
+          logger.info(`Initializing MCP server '${name}'`, { server: name });
         }
-
-        logger.info(`Starting MCP server '${name}'`, { server: name });
-        await this.connectServer(name, serverConfig);
+        const connection = new MCPConnection(name, serverConfig);
+        this.connections.set(name, connection);
+        await connection.connect();
       } catch (error) {
         // Don't throw here as we want to continue with other servers
         logger.error(
@@ -70,6 +72,48 @@ export class MCPHub {
     }
   }
 
+  async startServer(name) {
+    const config = this.configManager.getConfig();
+    const serverConfig = config.mcpServers?.[name];
+    if (!serverConfig) {
+      throw new ServerError("Server not found", { server: name });
+    }
+
+    const connection = this.connections.get(name);
+    if (!connection) {
+      throw new ServerError("Server connection not found", { server: name });
+    }
+
+    // If server was disabled, update config
+    if (serverConfig.disabled) {
+      serverConfig.disabled = false;
+      await this.configManager.updateConfig(config);
+    }
+
+    return await connection.start();
+  }
+
+  async stopServer(name, disable = false) {
+    const config = this.configManager.getConfig();
+    const serverConfig = config.mcpServers?.[name];
+    if (!serverConfig) {
+      throw new ServerError("Server not found", { server: name });
+    }
+
+    // If disabling, update config
+    if (disable) {
+      serverConfig.disabled = true;
+      await this.configManager.updateConfig(config);
+    }
+
+    const connection = this.connections.get(name);
+    if (!connection) {
+      throw new ServerError("Server connection not found", { server: name });
+    }
+
+    return await connection.stop(disable);
+  }
+
   async updateConfig(newConfigOrPath) {
     try {
       await this.configManager.updateConfig(newConfigOrPath);
@@ -82,25 +126,10 @@ export class MCPHub {
   }
 
   async connectServer(name, config) {
-    // Disconnect existing connection if any
-    await this.disconnectServer(name);
-
     const connection = new MCPConnection(name, config);
     this.connections.set(name, connection);
-
-    try {
-      await connection.connect();
-      return connection.getServerInfo();
-    } catch (error) {
-      // Connection errors are already properly typed from MCPConnection
-      if (!(error instanceof ConnectionError)) {
-        throw new ServerError(`Failed to connect server "${name}"`, {
-          server: name,
-          error: error.message,
-        });
-      }
-      throw error;
-    }
+    await connection.connect();
+    return connection.getServerInfo();
   }
 
   async disconnectServer(name) {
@@ -119,9 +148,8 @@ export class MCPHub {
           },
           false
         );
-      } finally {
-        this.connections.delete(name);
       }
+      // Don't remove from connections map
     }
   }
 
