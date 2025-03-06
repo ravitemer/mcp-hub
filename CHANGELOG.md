@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-03-06
+
+### Changed
+
+- Improved error handling and logging in MCPConnection and MCPHub
+- Simplified server connection management
+- Enhanced error message clarity for server connections
+- Standardized server error codes
+
 ## [1.4.1] - 2025-03-06
 
 ### Fixed

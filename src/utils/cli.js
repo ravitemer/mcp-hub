@@ -11,8 +11,8 @@ import {
   isMCPHubError,
 } from "./errors.js";
 
-//TODO: remoeve hard coded version
-const VERSION = "1.4.1";
+//TODO: remove hard coded version
+const VERSION = "1.5.0";
 
 // Custom failure handler for yargs
 function handleParseError(msg, err) {
