@@ -323,7 +323,7 @@ registerRoute(
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      throw wrapError(error, "START_ERROR", { server: name });
+      throw wrapError(error, "SERVER_START_ERROR", { server: name });
     }
   }
 );
@@ -355,7 +355,7 @@ registerRoute(
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      throw wrapError(error, "STOP_ERROR", { server: name });
+      throw wrapError(error, "SERVER_STOP_ERROR", { server: name });
     }
   }
 );

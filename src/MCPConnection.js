@@ -54,9 +54,9 @@ export class MCPConnection {
       this.config.disabled = true;
     }
 
-    if (this.status !== "disconnected") {
-      await this.disconnect();
-    }
+    // if (this.status !== "disconnected") {
+    await this.disconnect();
+    // }
 
     return this.getServerInfo();
   }
@@ -78,6 +78,7 @@ export class MCPConnection {
         return;
       }
 
+      this.error = null;
       this.status = "connecting";
       this.lastStarted = new Date().toISOString();
 
@@ -161,13 +162,15 @@ export class MCPConnection {
       });
     } catch (error) {
       // Ensure proper cleanup on error
-      this.error = error.message;
-      await this.disconnect();
+      await this.disconnect(error.message);
 
-      throw new ConnectionError("Failed to establish server connection", {
-        server: this.name,
-        error: error.message,
-      });
+      throw new ConnectionError(
+        `Failed to connect to "${this.name}" MCP server: ${error.message}`,
+        {
+          server: this.name,
+          error: error.message,
+        }
+      );
     }
   }
 
@@ -353,27 +356,27 @@ export class MCPConnection {
     }
   }
 
-  async resetState() {
+  async resetState(error) {
     this.client = null;
     this.transport = null;
     this.tools = [];
     this.resources = [];
     this.resourceTemplates = [];
     this.status = this.config.disabled ? "disabled" : "disconnected"; // disabled | disconnected | connecting | connected
-    this.error = null;
+    this.error = error || null;
     this.startTime = null;
     this.lastStarted = null;
     this.disabled = this.config.disabled || false;
   }
 
-  async disconnect() {
+  async disconnect(error) {
     if (this.transport) {
       await this.transport.close();
     }
     if (this.client) {
       await this.client.close();
     }
-    this.resetState();
+    this.resetState(error);
   }
 
   getServerInfo() {

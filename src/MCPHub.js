@@ -69,15 +69,8 @@ export class MCPHub {
           config: serverConfig,
         };
       } catch (error) {
-        logger.error(
-          error.code || "SERVER_START_ERROR",
-          "Failed to start server",
-          {
-            server: name,
-            error: error.message,
-          },
-          false
-        );
+        const e = wrapError(error);
+        logger.error(e.code || "SERVER_START_ERROR", e.message, e.data, false);
 
         return {
           name,
