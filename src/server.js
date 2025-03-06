@@ -14,7 +14,8 @@ import {
   wrapError,
 } from "./utils/errors.js";
 
-const VERSION = "1.3.0";
+//TODO: handle hardcoded version
+const VERSION = "1.5.0";
 const SERVER_ID = "mcp-hub";
 
 // Create Express app
