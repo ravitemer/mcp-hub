@@ -2,3 +2,4 @@ node_modules
 mcphub.nvim/
 .env
 *.tgz
+dist/

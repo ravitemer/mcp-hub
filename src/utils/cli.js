@@ -11,6 +11,9 @@ import {
   isMCPHubError,
 } from "./errors.js";
 
+//TODO: remoeve hard coded version
+const VERSION = "1.4.1";
+
 // Custom failure handler for yargs
 function handleParseError(msg, err) {
   // Ensure CLI parsing errors exit immediately with proper code
@@ -30,6 +33,7 @@ function handleParseError(msg, err) {
 async function run() {
   const argv = yargs(hideBin(process.argv))
     .usage("Usage: mcp-hub [options]")
+    .version(VERSION)
     .options({
       port: {
         alias: "p",
