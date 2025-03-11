@@ -6,7 +6,11 @@ import {
   ListResourceTemplatesResultSchema,
   CallToolResultSchema,
   ReadResourceResultSchema,
+  LoggingMessageNotificationSchema,
+  ToolListChangedNotificationSchema,
+  ResourceListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import EventEmitter from "events";
 import logger from "./utils/logger.js";
 import {
   ConnectionError,
@@ -15,8 +19,9 @@ import {
   wrapError,
 } from "./utils/errors.js";
 
-export class MCPConnection {
+export class MCPConnection extends EventEmitter {
   constructor(name, config) {
+    super();
     this.name = name;
     this.config = config;
     this.client = null;
@@ -101,6 +106,7 @@ export class MCPConnection {
         },
         stderr: "pipe",
       });
+      // logger.error("TEST", "env message", process.env, false);
 
       // Handle transport errors
       this.transport.onerror = (error) => {
@@ -150,6 +156,9 @@ export class MCPConnection {
       // Fetch initial capabilities before marking as connected
       await this.updateCapabilities();
 
+      // Set up notification handlers
+      this.setupNotificationHandlers();
+
       // Only mark as connected after capabilities are fetched
       this.status = "connected";
       this.startTime = Date.now();
@@ -174,7 +183,52 @@ export class MCPConnection {
     }
   }
 
+  setupNotificationHandlers() {
+    // Handle tool list changes
+    this.client.setNotificationHandler(
+      ToolListChangedNotificationSchema,
+      async () => {
+        logger.debug(
+          `Received tools list changed notification from ${this.name}`
+        );
+        await this.updateCapabilities();
+        this.emit("toolsChanged", {
+          server: this.name,
+          tools: this.tools,
+        });
+      }
+    );
+
+    // Handle resource list changes
+    this.client.setNotificationHandler(
+      ResourceListChangedNotificationSchema,
+      async () => {
+        logger.debug(
+          `Received resources list changed notification from ${this.name}`
+        );
+        await this.updateCapabilities();
+        this.emit("resourcesChanged", {
+          server: this.name,
+          resources: this.resources,
+          resourceTemplates: this.resourceTemplates,
+        });
+      }
+    );
+
+    // Handle general logging messages
+    this.client.setNotificationHandler(
+      LoggingMessageNotificationSchema,
+      (notification) => {
+        logger.debug("[server log]:", notification.params.data);
+      }
+    );
+  }
+
   async updateCapabilities() {
+    //skip for disabled servers
+    if (!this.client) {
+      return;
+    }
     // Helper function to safely request capabilities
     const safeRequest = async (method, schema) => {
       try {

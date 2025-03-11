@@ -18,6 +18,25 @@ const logger = {
   },
 
   /**
+   * Log capability changes (tools/resources list updates)
+   */
+  logCapabilityChange(type, serverName, data = {}) {
+    console.log(
+      JSON.stringify({
+        type: "info",
+        code: `${type}_LIST_CHANGED`,
+        message: `${serverName} ${type.toLowerCase()} list updated`,
+        data: {
+          type: type, //TOOL or RESOURCE
+          server: serverName,
+          ...data,
+        },
+        timestamp: new Date().toISOString(),
+      })
+    );
+  },
+
+  /**
    * Log informational message
    */
   info(message, data = {}) {

@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch MCP Hub",
+      "program": "${workspaceFolder}/${input:programPath}",
+      "args": [
+        "--port",
+        "3000",
+        "--config",
+        "${workspaceFolder}/mcp-servers.json"
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "type": "pickString",
+      "id": "programPath",
+      "description": "Select the entry point for your program",
+      "options": ["src/server.js", "src/utils/cli.js"]
+    }
+  ]
+}

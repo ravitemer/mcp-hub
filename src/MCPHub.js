@@ -7,9 +7,11 @@ import {
   ConfigError,
   wrapError,
 } from "./utils/errors.js";
+import EventEmitter from "events";
 
-export class MCPHub {
+export class MCPHub extends EventEmitter {
   constructor(configPathOrObject, { watch = false } = {}) {
+    super();
     this.connections = new Map();
     this.configManager = new ConfigManager(configPathOrObject);
     this.shouldWatchConfig = watch && typeof configPathOrObject === "string";
@@ -60,6 +62,18 @@ export class MCPHub {
         }
 
         const connection = new MCPConnection(name, serverConfig);
+
+        // Forward events from connection
+        connection.on("toolsChanged", (data) =>
+          this.emit("toolsChanged", data)
+        );
+        connection.on("resourcesChanged", (data) =>
+          this.emit("resourcesChanged", data)
+        );
+        connection.on("notification", (data) =>
+          this.emit("notification", data)
+        );
+
         this.connections.set(name, connection);
         await connection.connect();
 
@@ -256,6 +270,51 @@ export class MCPHub {
       });
     }
     return await connection.readResource(uri);
+  }
+
+  async refreshServer(name) {
+    const connection = this.connections.get(name);
+    if (!connection) {
+      throw new ServerError("Server not found", { server: name });
+    }
+
+    logger.info(`Refreshing capabilities for server '${name}'`);
+    await connection.updateCapabilities();
+    return connection.getServerInfo();
+  }
+
+  async refreshAllServers() {
+    logger.info("Refreshing capabilities for all servers");
+    const serverNames = Array.from(this.connections.keys());
+
+    const results = await Promise.allSettled(
+      serverNames.map(async (name) => {
+        try {
+          const connection = this.connections.get(name);
+          await connection.updateCapabilities();
+          return connection.getServerInfo();
+        } catch (error) {
+          logger.error(
+            "CAPABILITIES_REFRESH_ERROR",
+            `Failed to refresh capabilities for server ${name}`,
+            {
+              server: name,
+              error: error.message,
+            },
+            false
+          );
+          return {
+            name,
+            status: "error",
+            error: error.message,
+          };
+        }
+      })
+    );
+
+    return results.map((result) =>
+      result.status === "fulfilled" ? result.value : result.reason
+    );
   }
 }
 

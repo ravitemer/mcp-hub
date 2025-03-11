@@ -3,3 +3,5 @@ mcphub.nvim/
 .env
 *.tgz
 dist/
+*.avanterules
+*.log

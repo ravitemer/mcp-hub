@@ -15,7 +15,7 @@ import {
 } from "./utils/errors.js";
 
 //TODO: handle hardcoded version
-const VERSION = "1.5.0";
+const VERSION = "1.6.0";
 const SERVER_ID = "mcp-hub";
 
 // Create Express app
@@ -49,6 +49,20 @@ function getStatusCode(error) {
   return 500;
 }
 
+// Broadcast capability changes through both SSE and logger
+function broadcastCapabilityChange(type, serverName, data = {}) {
+  // Send SSE event
+  broadcastEvent(`${type.toLowerCase()}_list_changed`, {
+    type,
+    server: serverName,
+    ...data,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Log standardized update message
+  logger.logCapabilityChange(type, serverName, data);
+}
+
 // Send event to all SSE clients
 function broadcastEvent(event, data) {
   sseClients.forEach((client) => {
@@ -72,6 +86,22 @@ class ServiceManager {
   async initializeMCPHub() {
     logger.info("Initializing MCP Hub");
     this.mcpHub = new MCPHub(this.config, { watch: this.watch });
+
+    // Set up capability change handlers before initialization
+    this.mcpHub.on("toolsChanged", ({ server, tools }) => {
+      broadcastCapabilityChange("TOOL", server, { tools });
+    });
+
+    this.mcpHub.on(
+      "resourcesChanged",
+      ({ server, resources, resourceTemplates }) => {
+        broadcastCapabilityChange("RESOURCE", server, {
+          resources,
+          resourceTemplates,
+        });
+      }
+    );
+
     await this.mcpHub.initialize();
 
     // Initialize client manager with shutdown delay
@@ -402,6 +432,45 @@ registerRoute(
       });
     } catch (error) {
       throw wrapError(error, "SERVER_NOT_FOUND", { server: name });
+    }
+  }
+);
+
+// Register server refresh endpoint
+registerRoute(
+  "GET",
+  "/servers/:name/refresh",
+  "Refresh a server's capabilities",
+  async (req, res) => {
+    const { name } = req.params;
+    try {
+      const info = await serviceManager.mcpHub.refreshServer(name);
+      res.json({
+        status: "ok",
+        server: info,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw wrapError(error, "SERVER_REFRESH_ERROR", { server: name });
+    }
+  }
+);
+
+// Register all servers refresh endpoint
+registerRoute(
+  "GET",
+  "/refresh",
+  "Refresh all servers' capabilities",
+  async (req, res) => {
+    try {
+      const results = await serviceManager.mcpHub.refreshAllServers();
+      res.json({
+        status: "ok",
+        servers: results,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw wrapError(error, "SERVERS_REFRESH_ERROR");
     }
   }
 );
