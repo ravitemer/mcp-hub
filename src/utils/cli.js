@@ -12,7 +12,7 @@ import {
 } from "./errors.js";
 
 //TODO: remove hard coded version
-const VERSION = "1.5.0";
+const VERSION = "1.6.0";
 
 // Custom failure handler for yargs
 function handleParseError(msg, err) {

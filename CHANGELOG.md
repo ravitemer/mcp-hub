@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2025-03-11
+
+### Added
+
+- Real-time tool and resource capability notifications from MCP servers
+- New endpoints for refreshing server capabilities:
+  - POST /servers/:name/refresh - Refresh specific server
+  - POST /refresh - Refresh all servers
+- Enhanced event system for tool and resource list changes
+- Automatic capability updates when tools or resources change
+- Structured logging for capability changes
+
+### Enhanced
+
+- MCPConnection and MCPHub now extend EventEmitter for better event handling
+- Improved notification handling with proper SDK schemas
+- Better error handling for capability updates
+- Parallel execution of server capability refreshes
+
 ## [1.5.0] - 2025-03-06
 
 ### Changed

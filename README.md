@@ -143,6 +143,14 @@ eventSource.addEventListener("client_registered", (e) => {
 eventSource.addEventListener("client_unregistered", (e) => {
   // Client disconnected
 });
+
+eventSource.addEventListener("tool_list_changed", (e) => {
+  // Server's tools list has changed
+});
+
+eventSource.addEventListener("resource_list_changed", (e) => {
+  // Server's resources list has changed
+});
 ```
 
 #### Event Types
@@ -185,6 +193,29 @@ eventSource.addEventListener("client_unregistered", (e) => {
 }
 ```
 
+4. **tool_list_changed**
+
+```json
+{
+  "type": "TOOL",
+  "server": "example-server",
+  "tools": ["tool1", "tool2"],
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+5. **resource_list_changed**
+
+```json
+{
+  "type": "RESOURCE",
+  "server": "example-server",
+  "resources": ["resource1", "resource2"],
+  "resourceTemplates": [],
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
 ## REST API
 
 ### Health and Status
@@ -218,6 +249,54 @@ GET /api/servers
 
 ```bash
 GET /api/servers/:name/info
+```
+
+#### Refresh Server Capabilities
+
+```bash
+POST /api/servers/:name/refresh
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "server": {
+    "name": "example-server",
+    "capabilities": {
+      "tools": ["tool1", "tool2"],
+      "resources": ["resource1", "resource2"],
+      "resourceTemplates": []
+    }
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+#### Refresh All Servers
+
+```bash
+POST /api/refresh
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "servers": [
+    {
+      "name": "example-server",
+      "capabilities": {
+        "tools": ["tool1", "tool2"],
+        "resources": ["resource1", "resource2"],
+        "resourceTemplates": []
+      }
+    }
+  ],
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
 ```
 
 #### Start Server
