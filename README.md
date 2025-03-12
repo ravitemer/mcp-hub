@@ -76,8 +76,8 @@ MCP Hub uses a JSON configuration file to define managed servers:
 {
   "mcpServers": {
     "example-server": {
-      "command": "npx example-mcp-server",
-      "args": ["--config", "server-config.json"],
+      "command": "npx",
+      "args": ["example-server"],
       "env": {
         "API_KEY": "", // Will use process.env.API_KEY
         "DEBUG": "true", // Will use this value
