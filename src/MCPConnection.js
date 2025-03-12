@@ -97,11 +97,20 @@ export class MCPConnection extends EventEmitter {
         }
       );
 
+      const env = this.config.env || {};
+
+      // For each key in env, use process.env as fallback if value is falsy
+      // This means empty string, null, undefined etc. will fall back to process.env value
+      // Example: { API_KEY: "" } or { API_KEY: null } will use process.env.API_KEY
+      Object.keys(env).forEach((key) => {
+        env[key] = env[key] ? env[key] : process.env[key];
+      });
+
       this.transport = new StdioClientTransport({
         command: this.config.command,
         args: this.config.args || [],
         env: {
-          ...(this.config.env || {}),
+          ...env,
           ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         },
         stderr: "pipe",

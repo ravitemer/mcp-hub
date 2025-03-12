@@ -405,7 +405,25 @@ MCP Hub uses a JSON configuration file to define managed servers:
 
 - **command**: Command to start the MCP server
 - **args**: Array of command line arguments
-- **env**: Environment variables for the server
+- **env**: Environment variables for the server. If a variable is specified with a falsy value (empty string, null, undefined), it will fall back to using the corresponding system environment variable if available.
+
+  Example:
+
+  ```json
+  {
+    "mcpServers": {
+      "example-server": {
+        "command": "npx example-mcp-server",
+        "env": {
+          "API_KEY": "", // Will use process.env.API_KEY
+          "DEBUG": "true", // Will use this value
+          "SECRET_TOKEN": null // Will use process.env.SECRET_TOKEN
+        }
+      }
+    }
+  }
+  ```
+
 - **disabled**: Whether the server is disabled (default: false)
 
 ## Error Handling
