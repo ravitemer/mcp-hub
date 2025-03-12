@@ -68,6 +68,34 @@ The server outputs JSON-formatted status messages on startup and state changes:
 }
 ```
 
+## Configuration
+
+MCP Hub uses a JSON configuration file to define managed servers:
+
+```json
+{
+  "mcpServers": {
+    "example-server": {
+      "command": "npx example-mcp-server",
+      "args": ["--config", "server-config.json"],
+      "env": {
+        "API_KEY": "", // Will use process.env.API_KEY
+        "DEBUG": "true", // Will use this value
+        "SECRET_TOKEN": null // Will use process.env.SECRET_TOKEN
+      },
+      "disabled": false
+    }
+  }
+}
+```
+
+### Configuration Options
+
+- **command**: Command to start the MCP server
+- **args**: Array of command line arguments
+- **env**: Environment variables for the server. If a variable is specified with a falsy value (empty string, null, undefined), it will fall back to using the corresponding system environment variable if available.
+- **disabled**: Whether the server is disabled (default: false)
+
 ## Example Integrations
 
 ### Neovim Integration
@@ -79,142 +107,30 @@ The [ravitemer/mcphub.nvim](https://github.com/ravitemer/mcphub.nvim) plugin pro
 - Real-time status updates in Neovim
 - Custom commands for common MCP operations
 
-## Architecture
+## Logging
 
-### Hub Server Lifecycle
-
-![Hub Lifecycle](public/diagrams/hub-lifecycle.png)
-
-The Hub Server coordinates communication between clients and MCP servers:
-
-1. Starts and connects to configured MCP servers
-2. Manages client registrations
-3. Routes tool execution and resource requests
-4. Handles server monitoring and health checks
-5. Performs clean shutdown of all connections
-
-### MCP Server Management
-
-![Server Management Flow](public/diagrams/server-management-flow.png)
-
-The Hub Server actively manages MCP servers through:
-
-1. Configuration-based server initialization
-2. Connection and capability discovery
-3. Health monitoring and status tracking
-4. Automatic reconnection attempts
-5. Server state management
-
-### Request Handling
-
-![Request Flow](public/diagrams/request-flow.png)
-
-All client requests follow a standardized flow:
-
-1. Request validation
-2. Server status verification
-3. Request routing to appropriate MCP server
-4. Response handling and error management
-
-### Real-time Updates
-
-The Hub Server provides real-time updates via Server-Sent Events (SSE) at `/api/events`:
-
-```javascript
-const eventSource = new EventSource("http://localhost:3000/api/events");
-
-// Event handlers
-eventSource.addEventListener("server_info", (e) => {
-  // Initial connection info
-});
-
-eventSource.addEventListener("server_ready", (e) => {
-  // Server started and ready
-});
-
-eventSource.addEventListener("server_shutdown", (e) => {
-  // Server is shutting down
-});
-
-eventSource.addEventListener("client_registered", (e) => {
-  // New client connected
-});
-
-eventSource.addEventListener("client_unregistered", (e) => {
-  // Client disconnected
-});
-
-eventSource.addEventListener("tool_list_changed", (e) => {
-  // Server's tools list has changed
-});
-
-eventSource.addEventListener("resource_list_changed", (e) => {
-  // Server's resources list has changed
-});
-```
-
-#### Event Types
-
-1. **server_info**
+MCP Hub uses structured JSON logging for all events:
 
 ```json
 {
-  "server_id": "mcp-hub",
-  "version": "1.0.0",
-  "status": "connected",
-  "pid": 12345,
-  "port": 3000,
-  "activeClients": 1,
+  "type": "error",
+  "code": "TOOL_ERROR",
+  "message": "Failed to execute tool",
+  "data": {
+    "server": "example-server",
+    "tool": "example-tool",
+    "error": "Invalid parameters"
+  },
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
 
-2. **server_ready**
+Log levels include:
 
-```json
-{
-  "status": "ready",
-  "server_id": "mcp-hub",
-  "version": "1.0.0",
-  "port": 3000,
-  "pid": 12345,
-  "servers": [],
-  "timestamp": "2024-02-20T05:55:00.000Z"
-}
-```
-
-3. **client_registered/unregistered**
-
-```json
-{
-  "activeClients": 2,
-  "clientId": "client_123",
-  "timestamp": "2024-02-20T05:55:00.000Z"
-}
-```
-
-4. **tool_list_changed**
-
-```json
-{
-  "type": "TOOL",
-  "server": "example-server",
-  "tools": ["tool1", "tool2"],
-  "timestamp": "2024-02-20T05:55:00.000Z"
-}
-```
-
-5. **resource_list_changed**
-
-```json
-{
-  "type": "RESOURCE",
-  "server": "example-server",
-  "resources": ["resource1", "resource2"],
-  "resourceTemplates": [],
-  "timestamp": "2024-02-20T05:55:00.000Z"
-}
-```
+- `info`: Normal operational messages
+- `warn`: Warning conditions
+- `debug`: Detailed debug information
+- `error`: Error conditions (includes error code and details)
 
 ## REST API
 
@@ -382,49 +298,72 @@ POST /api/servers/:name/resources
 }
 ```
 
-## Configuration
+## Real-time Updates
 
-MCP Hub uses a JSON configuration file to define managed servers:
+The Hub Server provides real-time updates via Server-Sent Events (SSE) at `/api/events`. Connect to this endpoint to receive real-time updates about server status, client connections, and capability changes.
+
+### Event Types
+
+1. **server_info** - Initial connection information
 
 ```json
 {
-  "mcpServers": {
-    "example-server": {
-      "command": "npx example-mcp-server",
-      "args": ["--config", "server-config.json"],
-      "env": {
-        "API_KEY": "your-api-key"
-      },
-      "disabled": false
-    }
-  }
+  "server_id": "mcp-hub",
+  "version": "1.0.0",
+  "status": "connected",
+  "pid": 12345,
+  "port": 3000,
+  "activeClients": 1,
+  "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
 
-### Configuration Options
+2. **server_ready** - Server started and ready
 
-- **command**: Command to start the MCP server
-- **args**: Array of command line arguments
-- **env**: Environment variables for the server. If a variable is specified with a falsy value (empty string, null, undefined), it will fall back to using the corresponding system environment variable if available.
+```json
+{
+  "status": "ready",
+  "server_id": "mcp-hub",
+  "version": "1.0.0",
+  "port": 3000,
+  "pid": 12345,
+  "servers": [],
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
 
-  Example:
+3. **client_registered/unregistered** - Client connection events
 
-  ```json
-  {
-    "mcpServers": {
-      "example-server": {
-        "command": "npx example-mcp-server",
-        "env": {
-          "API_KEY": "", // Will use process.env.API_KEY
-          "DEBUG": "true", // Will use this value
-          "SECRET_TOKEN": null // Will use process.env.SECRET_TOKEN
-        }
-      }
-    }
-  }
-  ```
+```json
+{
+  "activeClients": 2,
+  "clientId": "client_123",
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
 
-- **disabled**: Whether the server is disabled (default: false)
+4. **tool_list_changed** - Server's tools list has changed
+
+```json
+{
+  "type": "TOOL",
+  "server": "example-server",
+  "tools": ["tool1", "tool2"],
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+5. **resource_list_changed** - Server's resources list has changed
+
+```json
+{
+  "type": "RESOURCE",
+  "server": "example-server",
+  "resources": ["resource1", "resource2"],
+  "resourceTemplates": [],
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
 
 ## Error Handling
 
@@ -487,30 +426,42 @@ Example error structure:
    - Duplicate registrations
    - Invalid client IDs
 
-## Logging
+## Architecture
 
-MCP Hub uses structured JSON logging for all events:
+### Hub Server Lifecycle
 
-```json
-{
-  "type": "error",
-  "code": "TOOL_ERROR",
-  "message": "Failed to execute tool",
-  "data": {
-    "server": "example-server",
-    "tool": "example-tool",
-    "error": "Invalid parameters"
-  },
-  "timestamp": "2024-02-20T05:55:00.000Z"
-}
-```
+![Hub Lifecycle](public/diagrams/hub-lifecycle.png)
 
-Log levels include:
+The Hub Server coordinates communication between clients and MCP servers:
 
-- `info`: Normal operational messages
-- `warn`: Warning conditions
-- `debug`: Detailed debug information
-- `error`: Error conditions (includes error code and details)
+1. Starts and connects to configured MCP servers
+2. Manages client registrations
+3. Routes tool execution and resource requests
+4. Handles server monitoring and health checks
+5. Performs clean shutdown of all connections
+
+### MCP Server Management
+
+![Server Management Flow](public/diagrams/server-management-flow.png)
+
+The Hub Server actively manages MCP servers through:
+
+1. Configuration-based server initialization
+2. Connection and capability discovery
+3. Health monitoring and status tracking
+4. Automatic reconnection attempts
+5. Server state management
+
+### Request Handling
+
+![Request Flow](public/diagrams/request-flow.png)
+
+All client requests follow a standardized flow:
+
+1. Request validation
+2. Server status verification
+3. Request routing to appropriate MCP server
+4. Response handling and error management
 
 ## Requirements
 
