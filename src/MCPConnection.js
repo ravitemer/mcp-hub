@@ -1,5 +1,5 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import {
   ListToolsResultSchema,
   ListResourcesResultSchema,
@@ -110,8 +110,10 @@ export class MCPConnection extends EventEmitter {
         command: this.config.command,
         args: this.config.args || [],
         env: {
+          //INFO: getDefaultEnvironment is imp in order to start mcp servers properly
+          ...getDefaultEnvironment(),
+          ...(process.env.MCP_ENV_VARS ? JSON.parse(process.env.MCP_ENV_VARS) : {}),
           ...env,
-          ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         },
         stderr: "pipe",
       });
