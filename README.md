@@ -8,6 +8,7 @@ A centralized manager for Model Context Protocol (MCP) servers that provides:
 
 - Dynamic MCP server management and monitoring
 - REST API for tool execution and resource access
+- MCP Server marketplace (using Cline [marketplace](https://github.com/cline/mcp-marketplace))
 - Real-time server status tracking
 - Client connection management
 - Process lifecycle handling
@@ -105,7 +106,7 @@ The [ravitemer/mcphub.nvim](https://github.com/ravitemer/mcphub.nvim) plugin pro
 - Execute MCP tools directly from Neovim
 - Access MCP resources within your editing workflow
 - Real-time status updates in Neovim
-- Custom commands for common MCP operations
+- Auto install mcp servers with marketplace addition
 
 ## Logging
 
@@ -274,6 +275,68 @@ POST /api/client/register
 POST /api/client/unregister
 {
   "clientId": "unique_client_id"
+}
+```
+
+### Marketplace Integration
+
+#### List Available Servers
+
+```bash
+GET /api/marketplace
+```
+
+Query Parameters:
+
+- `search`: Filter by name, description, or tags
+- `category`: Filter by category
+- `tags`: Filter by comma-separated tags
+- `sort`: Sort by "newest", "stars", or "name"
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "mcpId": "github.com/user/repo/server",
+      "name": "Example Server",
+      "description": "Description here",
+      "category": "search",
+      "tags": ["search", "ai"],
+      "githubStars": 100,
+      "isRecommended": true,
+      "createdAt": "2024-02-20T05:55:00.000Z"
+    }
+  ],
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+#### Get Server Details
+
+```bash
+POST /api/marketplace/details
+Content-Type: application/json
+
+{
+  "mcpId": "github.com/user/repo/server"
+}
+```
+
+Response:
+
+```json
+{
+  "server": {
+    "mcpId": "github.com/user/repo/server",
+    "name": "Example Server",
+    "description": "Description here",
+    "githubUrl": "https://github.com/user/repo",
+    "readmeContent": "# Server Documentation...",
+    "llmsInstallationContent": "Installation guide..."
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
 
@@ -466,24 +529,11 @@ All client requests follow a standardized flow:
 ## Requirements
 
 - Node.js >= 18.0.0
-- npm >= 9.0.0
 
-## Contributing
+## Todo
 
-Please read our [Contributing Guidelines](./CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+- [ ] Implement custom marketplace rather than depending on mcp-marketplace
 
-## Security
+## Acknowledgements
 
-For security-related issues, please review our [Security Policy](./SECURITY.md) and follow the vulnerability reporting process.
-
-## Changelog
-
-See [CHANGELOG.md](./CHANGELOG.md) for a list of all notable changes.
-
-## Code of Conduct
-
-Please note that this project is released with a [Code of Conduct](./CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](./LICENSE.md) file for details.
+- [Cline mcp-marketplace](https://github.com/cline/mcp-marketplace) - For providing the MCP server marketplace endpoints that power MCP Hub's marketplace integration
