@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2025-03-14
+
+### Added
+
+- Integrated marketplace functionality for discovering and managing MCP servers
+- New API endpoints for marketplace interactions:
+  - GET /marketplace - List available servers with filtering and sorting
+  - POST /marketplace/details - Get detailed server information
+- Enhanced marketplace caching system for better performance
+- Comprehensive test suite for marketplace functionality
+
 ## [1.6.2] - 2025-03-12
 
 ### Changed
