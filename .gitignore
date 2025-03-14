@@ -5,3 +5,4 @@ mcphub.nvim/
 dist/
 *.avanterules
 *.log
+.r*

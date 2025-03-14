@@ -37,7 +37,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.4.1",
     "express": "^4.21.2",
-    "winston": "^3.17.0",
     "yargs": "^17.7.2"
   },
   "devDependencies": {

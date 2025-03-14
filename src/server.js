@@ -13,9 +13,8 @@ import {
   isMCPHubError,
   wrapError,
 } from "./utils/errors.js";
+import { getMarketplace } from "./marketplace.js";
 
-//TODO: handle hardcoded version
-const VERSION = "1.6.0";
 const SERVER_ID = "mcp-hub";
 
 // Create Express app
@@ -72,6 +71,7 @@ function broadcastEvent(event, data) {
 
 let serviceManager = null;
 let clientManager = null;
+let marketplace = null;
 
 class ServiceManager {
   constructor(config, port, watch = false, shutdownDelay = 0) {
@@ -106,6 +106,10 @@ class ServiceManager {
 
     // Initialize client manager with shutdown delay
     clientManager = new ClientManager(this.shutdownDelay);
+
+    // Initialize marketplace
+    marketplace = getMarketplace();
+    await marketplace.initialize();
   }
 
   async startServer() {
@@ -119,7 +123,6 @@ class ServiceManager {
         const startupInfo = {
           status: "ready",
           server_id: SERVER_ID,
-          version: VERSION,
           port: this.port,
           pid: process.pid,
           servers: serverStatuses,
@@ -257,7 +260,6 @@ registerRoute("GET", "/events", "Subscribe to server events", (req, res) => {
   // Send initial server info
   const serverInfo = {
     server_id: SERVER_ID,
-    version: VERSION,
     status: "connected",
     pid: process.pid,
     port: serviceManager?.port,
@@ -274,6 +276,60 @@ registerRoute("GET", "/events", "Subscribe to server events", (req, res) => {
     sseClients.delete(res);
   });
 });
+
+// Register marketplace endpoints
+registerRoute(
+  "GET",
+  "/marketplace",
+  "Get marketplace catalog with filtering and sorting",
+  async (req, res) => {
+    try {
+      const { search, category, tags, sort } = req.query;
+      const items = await marketplace.getCatalog({
+        search,
+        category,
+        tags: tags ? tags.split(",") : undefined,
+        sort,
+      });
+      res.json({
+        items,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw wrapError(error, "MARKETPLACE_ERROR", {
+        query: req.query,
+      });
+    }
+  }
+);
+
+registerRoute(
+  "POST",
+  "/marketplace/details",
+  "Get detailed server information",
+  async (req, res) => {
+    try {
+      const { mcpId } = req.body;
+      if (!mcpId) {
+        throw new ValidationError("Missing mcpId in request body");
+      }
+
+      const details = await marketplace.getServerDetails(mcpId);
+      if (!details) {
+        throw new ValidationError("Server not found", { mcpId });
+      }
+
+      res.json({
+        server: details,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw wrapError(error, "MARKETPLACE_ERROR", {
+        mcpId: req.body.mcpId,
+      });
+    }
+  }
+);
 
 // Register client management routes
 registerRoute(
@@ -298,7 +354,6 @@ registerRoute(
     res.json({
       status: "success",
       server_id: SERVER_ID,
-      version: VERSION,
       activeClients,
       timestamp: new Date().toISOString(),
     });
@@ -396,7 +451,6 @@ registerRoute("GET", "/health", "Check server health", (req, res) => {
   res.json({
     status: "ok",
     server_id: SERVER_ID,
-    version: VERSION,
     activeClients: clientManager?.getActiveClientCount() || 0,
     timestamp: new Date().toISOString(),
     servers: serviceManager?.mcpHub?.getAllServerStatuses() || [],
@@ -546,9 +600,6 @@ router.use((err, req, res, next) => {
         path: req.path,
         method: req.method,
       });
-
-  // Log error with appropriate level/data
-  // logger.error(error.code, error.message, error.data, false);
 
   // Only send error response if headers haven't been sent
   if (!res.headersSent) {
