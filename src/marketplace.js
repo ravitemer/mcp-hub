@@ -91,12 +91,14 @@ export class Marketplace {
     try {
       await fs.mkdir(CACHE_DIR, { recursive: true });
 
+      // First try to load cache (even if stale)
       try {
         const content = await fs.readFile(this.cacheFile, "utf-8");
         this.cache = JSON.parse(content);
-        logger.debug("Loaded existing marketplace cache", {
+        logger.debug("Loaded marketplace cache", {
           catalogItems: this.cache.catalog.items.length,
           detailedServers: Object.keys(this.cache.serverDetails).length,
+          isFresh: this.isCatalogValid(),
         });
       } catch (error) {
         if (error.code !== "ENOENT") {
@@ -104,12 +106,59 @@ export class Marketplace {
             error: error.message,
           });
         }
-        await this.saveCache();
+        // Initialize empty cache structure
+        this.cache = {
+          catalog: { items: [], lastUpdated: null },
+          serverDetails: {},
+        };
+      }
+
+      // If no cache or stale, try to fetch fresh data
+      if (!this.isCatalogValid()) {
+        try {
+          await this.fetchCatalog();
+          logger.info("Successfully updated marketplace catalog", {
+            items: this.cache.catalog.items.length,
+          });
+        } catch (error) {
+          // If fetch fails but we have stale cache, log warning and continue
+          if (this.cache.catalog.items.length > 0) {
+            logger.warn("Using stale marketplace cache", {
+              error: error.message,
+              cacheAge:
+                Date.now() -
+                new Date(this.cache.catalog.lastUpdated || 0).getTime(),
+            });
+          } else {
+            // If no cache at all, log error but continue with empty catalog
+            logger.error(
+              "MARKETPLACE_INIT_ERROR",
+              "Failed to initialize marketplace catalog",
+              {
+                error: error.message,
+                fallback: "Using empty catalog",
+              },
+              false
+            );
+            await this.updateCatalog([]); // Ensure we have a valid cache structure
+          }
+        }
       }
     } catch (error) {
-      throw new MarketplaceError("Failed to initialize marketplace cache", {
-        error: error.message,
-      });
+      // Catch-all for catastrophic errors, but still continue
+      logger.error(
+        "MARKETPLACE_INIT_ERROR",
+        "Failed to initialize marketplace",
+        {
+          error: error.message,
+          fallback: "Continuing with empty catalog",
+        },
+        false
+      );
+      this.cache = {
+        catalog: { items: [], lastUpdated: null },
+        serverDetails: {},
+      };
     }
   }
 

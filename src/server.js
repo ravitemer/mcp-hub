@@ -84,8 +84,20 @@ class ServiceManager {
   }
 
   async initializeMCPHub() {
+    // Initialize marketplace first
+    logger.info("Initializing marketplace catalog");
+    marketplace = getMarketplace();
+    await marketplace.initialize();
+    logger.info("Marketplace initialized", {
+      catalogItems: marketplace.cache.catalog.items.length,
+    });
+
+    // Then initialize MCP Hub
     logger.info("Initializing MCP Hub");
-    this.mcpHub = new MCPHub(this.config, { watch: this.watch });
+    this.mcpHub = new MCPHub(this.config, {
+      watch: this.watch,
+      marketplace,
+    });
 
     // Set up capability change handlers before initialization
     this.mcpHub.on("toolsChanged", ({ server, tools }) => {
@@ -106,10 +118,6 @@ class ServiceManager {
 
     // Initialize client manager with shutdown delay
     clientManager = new ClientManager(this.shutdownDelay);
-
-    // Initialize marketplace
-    marketplace = getMarketplace();
-    await marketplace.initialize();
   }
 
   async startServer() {

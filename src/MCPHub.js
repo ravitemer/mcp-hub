@@ -10,11 +10,12 @@ import {
 import EventEmitter from "events";
 
 export class MCPHub extends EventEmitter {
-  constructor(configPathOrObject, { watch = false } = {}) {
+  constructor(configPathOrObject, { watch = false, marketplace } = {}) {
     super();
     this.connections = new Map();
     this.configManager = new ConfigManager(configPathOrObject);
     this.shouldWatchConfig = watch && typeof configPathOrObject === "string";
+    this.marketplace = marketplace;
   }
 
   async initialize() {
@@ -61,7 +62,11 @@ export class MCPHub extends EventEmitter {
           logger.info(`Initializing MCP server '${name}'`, { server: name });
         }
 
-        const connection = new MCPConnection(name, serverConfig);
+        const connection = new MCPConnection(
+          name,
+          serverConfig,
+          this.marketplace
+        );
 
         // Forward events from connection
         connection.on("toolsChanged", (data) =>
@@ -165,7 +170,7 @@ export class MCPHub extends EventEmitter {
   }
 
   async connectServer(name, config) {
-    const connection = new MCPConnection(name, config);
+    const connection = new MCPConnection(name, config, this.marketplace);
     this.connections.set(name, connection);
     await connection.connect();
     return connection.getServerInfo();

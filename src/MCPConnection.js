@@ -1,5 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
+import {
+  StdioClientTransport,
+  getDefaultEnvironment,
+} from "@modelcontextprotocol/sdk/client/stdio.js";
 import {
   ListToolsResultSchema,
   ListResourcesResultSchema,
@@ -20,9 +23,25 @@ import {
 } from "./utils/errors.js";
 
 export class MCPConnection extends EventEmitter {
-  constructor(name, config) {
+  constructor(name, config, marketplace) {
     super();
-    this.name = name;
+    this.name = name; // Keep as mcpId
+
+    // Set display name from marketplace
+    this.displayName = name; // Default to mcpId
+    if (marketplace?.cache?.catalog?.items) {
+      const item = marketplace.cache.catalog.items.find(
+        (item) => item.mcpId === name
+      );
+      if (item?.name) {
+        this.displayName = item.name;
+        logger.debug(`Using marketplace name for server '${name}'`, {
+          name,
+          displayName: item.name,
+        });
+      }
+    }
+
     this.config = config;
     this.client = null;
     this.transport = null;
@@ -112,12 +131,13 @@ export class MCPConnection extends EventEmitter {
         env: {
           //INFO: getDefaultEnvironment is imp in order to start mcp servers properly
           ...getDefaultEnvironment(),
-          ...(process.env.MCP_ENV_VARS ? JSON.parse(process.env.MCP_ENV_VARS) : {}),
+          ...(process.env.MCP_ENV_VARS
+            ? JSON.parse(process.env.MCP_ENV_VARS)
+            : {}),
           ...env,
         },
         stderr: "pipe",
       });
-      // logger.error("TEST", "env message", process.env, false);
 
       // Handle transport errors
       this.transport.onerror = (error) => {
@@ -446,7 +466,8 @@ export class MCPConnection extends EventEmitter {
 
   getServerInfo() {
     return {
-      name: this.name,
+      name: this.name, // Original mcpId
+      displayName: this.displayName, // Friendly name from marketplace
       status: this.status,
       error: this.error,
       capabilities: {
