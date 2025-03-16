@@ -44,12 +44,12 @@
     "yargs": "^17.7.2"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^3.0.5",
+    "@vitest/coverage-v8": "^3.0.8",
     "esbuild": "^0.25.1",
     "mock-fs": "^5.4.1",
     "nock": "^14.0.0",
     "nodemon": "^3.1.9",
     "supertest": "^7.0.0",
-    "vitest": "^3.0.5"
+    "vitest": "^3.0.8"
   }
 }
