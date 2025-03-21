@@ -493,7 +493,45 @@ Example error structure:
 
 ### Hub Server Lifecycle
 
-![Hub Lifecycle](public/diagrams/hub-lifecycle.png)
+```mermaid
+sequenceDiagram
+    participant H as Hub Server
+    participant M1 as MCP Server 1
+    participant M2 as MCP Server 2
+    participant C as Client
+
+    Note over H: Server Start
+    activate H
+    H->>+M1: Connect
+    M1-->>-H: Connected + Capabilities
+    H->>+M2: Connect
+    M2-->>-H: Connected + Capabilities
+
+    Note over C,H: Client Interactions
+    C->>H: Register Client
+    H-->>C: Servers List & Capabilities
+    
+    C->>H: Call Tool (M1)
+    H->>M1: Execute Tool
+    M1-->>H: Tool Result
+    H-->>C: Response
+
+    C->>H: Access Resource (M2)
+    H->>M2: Get Resource
+    M2-->>H: Resource Data
+    H-->>C: Response
+
+    Note over H: Server Management
+    H->>H: Monitor Server Health
+    H->>H: Track Server Status
+    H->>H: Update Capabilities
+
+    Note over H: Shutdown Process
+    C->>H: Unregister
+    H->>M1: Disconnect
+    H->>M2: Disconnect
+    deactivate H
+```
 
 The Hub Server coordinates communication between clients and MCP servers:
 
@@ -505,7 +543,39 @@ The Hub Server coordinates communication between clients and MCP servers:
 
 ### MCP Server Management
 
-![Server Management Flow](public/diagrams/server-management-flow.png)
+```mermaid
+flowchart TB
+    A[Hub Server Start] --> B{Config Available?}
+    B -->|Yes| C[Load Server Configs]
+    B -->|No| D[Use Default Settings]
+    
+    C --> E[Initialize Connections]
+    D --> E
+    
+    E --> F{For Each MCP Server}
+    F -->|Enabled| G[Attempt Connection]
+    F -->|Disabled| H[Skip Server]
+    
+    G --> I{Connection Status}
+    I -->|Success| J[Fetch Capabilities]
+    I -->|Failure| K[Log Error]
+    
+    J --> L[Store Server Info]
+    K --> M[Mark Server Unavailable]
+    
+    L --> N[Monitor Health]
+    M --> N
+    
+    N --> O{Health Check}
+    O -->|Healthy| P[Update Capabilities]
+    O -->|Unhealthy| Q[Attempt Reconnect]
+    
+    Q -->|Success| P
+    Q -->|Failure| R[Update Status]
+    
+    P --> N
+    R --> N
+```
 
 The Hub Server actively manages MCP servers through:
 
@@ -517,7 +587,44 @@ The Hub Server actively manages MCP servers through:
 
 ### Request Handling
 
-![Request Flow](public/diagrams/request-flow.png)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant H as Hub Server
+    participant M as MCP Server
+    
+    Note over C,H: Tool Execution Flow
+    C->>H: POST /api/servers/{name}/tools
+    H->>H: Validate Request
+    H->>H: Check Server Status
+    
+    alt Server Not Connected
+        H-->>C: Error: Server Unavailable
+    else Server Connected
+        H->>M: Execute Tool
+        
+        alt Tool Success
+            M-->>H: Tool Result
+            H-->>C: Success Response
+        else Tool Error
+            M-->>H: Error Details
+            H-->>C: Error Response
+        end
+    end
+    
+    Note over C,H: Resource Access Flow
+    C->>H: POST /api/servers/{name}/resources
+    H->>H: Validate URI
+    H->>H: Check Server Status
+    
+    alt Valid Resource
+        H->>M: Request Resource
+        M-->>H: Resource Data
+        H-->>C: Resource Content
+    else Invalid Resource
+        H-->>C: 404 Not Found
+    end
+```
 
 All client requests follow a standardized flow:
 
