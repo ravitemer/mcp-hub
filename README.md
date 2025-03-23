@@ -69,6 +69,58 @@ The server outputs JSON-formatted status messages on startup and state changes:
 }
 ```
 
+## Nix
+
+### Nixpkgs install
+
+> comming...
+
+### Flake install
+
+Just add it to your NixOS flake.nix or home-manager:
+
+```nix
+inputs = {
+  mcp-hub.url = "github:ravitemer/mcp-hub";
+  ...
+}
+```
+
+To integrate mcp-hub to your NixOS/Home Manager configuration, add the following to your environment.systemPackages or home.packages respectively:
+
+```nix
+inputs.mcp-hub.packages."${system}".default
+```
+
+### Usage without install
+
+If you want to use mcphub.nvim without having mcp-hub server in your PATH you can link the server under the hood adding
+the mcp-hub nix store path to the `cmd` command in the plugin config like
+
+[Nixvim](https://github.com/nix-community/nixvim) example:
+```nix
+{ mcphub-nvim, mcp-hub, ... }:
+{
+  extraPlugins = [mcphub-nvim];
+  extraConfigLua = ''
+    require("mcphub").setup({
+        port = 3000,
+        config = vim.fn.expand("~/mcp-hub/mcp-servers.json"),
+        cmd = "${mcp-hub}/bin/mcp-hub"
+    })
+  '';
+}
+
+# where
+{
+  # For nixpkgs (not available yet)
+  mcp-hub = pkgs.mcp-hub;
+
+  # For flakes
+  mcp-hub = inputs.mcp-hub.packages."${system}".default;
+}
+```
+
 ## Configuration
 
 MCP Hub uses a JSON configuration file to define managed servers:
