@@ -21,6 +21,12 @@ async function buildApp() {
                 globalThis.require = require;
                 `
             },
+            external: [
+                // Keep dependencies external since they're specified in package.json
+                '@modelcontextprotocol/sdk',
+                'express',
+                'yargs',
+            ],
             define: {
                 'process.env.NODE_ENV': '"production"',
                 'VERSION': `"${version}"` // Inject version from package.json
