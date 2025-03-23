@@ -35,8 +35,7 @@
     "postbuild": "chmod +x dist/cli.js",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "update-data": "node scripts/update-data.js",
-    "prepare": "npm run build"
+    "update-data": "node scripts/update-data.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.4.1",
