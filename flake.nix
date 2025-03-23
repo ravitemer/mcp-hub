@@ -1,27 +1,31 @@
 {
+  description = "A manager server for MCP servers that handles process management and tool routing";
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"] (system:
-      let
-        pkgs = import nixpkgs { inherit system; };
-        nodejs = pkgs.nodejs_18;
+  outputs = inputs@{ self, flake-parts, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
 
-        npmDeps = pkgs.fetchNpmDeps {
-          name = "mcp-hub-deps";
-          src = ./.;
-          hash = "sha256-zmOGESo28HSUk3vSOEplpWIyn9m3U/W6qPeZaJjx1iE=";
-        };
-      in
-      {
-        packages = {
-          default = pkgs.stdenv.mkDerivation {
+      perSystem = { pkgs, ... }:
+        let
+          nodejs = pkgs.nodejs_18;
+
+          npmDeps = pkgs.fetchNpmDeps {
+            name = "mcp-hub-deps";
+            src = self;
+            hash = "sha256-zmOGESo28HSUk3vSOEplpWIyn9m3U/W6qPeZaJjx1iE=";
+          };
+
+          mcp-hub = pkgs.stdenv.mkDerivation {
             pname = "mcp-hub";
             version = "1.7.3";
-            src = ./.;
+            src = self;
 
             nativeBuildInputs = [ nodejs ];
 
@@ -57,14 +61,16 @@
               runHook postInstall
             '';
           };
-        };
+        in
+        {
+          packages = {
+            default = mcp-hub;
+            mcp-hub = mcp-hub;
+          };
 
-        devShell = pkgs.mkShell {
-          buildInputs = [
-            nodejs
-            pkgs.vitest
-          ];
+          devShells.default = pkgs.mkShell {
+            buildInputs = [ nodejs ];
+          };
         };
-      }
-    );
+    };
 }
