@@ -250,7 +250,10 @@ export class MCPConnection extends EventEmitter {
     this.client.setNotificationHandler(
       LoggingMessageNotificationSchema,
       (notification) => {
-        logger.debug("[server log]:", notification.params.data);
+        let params = notification.params || {}
+        let data = params.data || {}
+        let level = params.level || "debug"
+        logger.debug(`["${this.name}" server ${level} log]: ${JSON.stringify(data, null, 2)}`);
       }
     );
   }
@@ -417,7 +420,7 @@ export class MCPConnection extends EventEmitter {
       });
 
     if (!isValidResource) {
-      throw new ResourceError("Resource not found", {
+      throw new ResourceError(`Resource not found : ${uri}`, {
         server: this.name,
         uri,
         availableResources: this.resources.map((r) => r.uri),

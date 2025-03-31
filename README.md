@@ -73,7 +73,7 @@ The server outputs JSON-formatted status messages on startup and state changes:
 
 ### Nixpkgs install
 
-> comming...
+> coming...
 
 ### Flake install
 

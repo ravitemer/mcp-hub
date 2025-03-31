@@ -4,15 +4,29 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startServer } from "../server.js";
 import logger from "./logger.js";
+import { readFileSync } from 'fs';
 import {
-  ValidationError,
-  ServerError,
-  ConfigError,
   isMCPHubError,
 } from "./errors.js";
+import { fileURLToPath } from "url";
+import { join } from "path";
 
 // VERSION will be injected from package.json during build
-/* global VERSION */
+/* global process.env.VERSION */
+
+
+// Read version from package.json while in dev mode to get the latest version
+// We can't do this production, due to issues when installed as global package on "bun"
+// Ignore the esbuild build warning id: 'assign-to-define',
+if (process.env.NODE_ENV != "production") {
+  // Get the directory path of the current module
+  const __dirname = fileURLToPath(new URL('.', import.meta.url));
+  // Navigate up two directories to find package.json
+  const pkgPath = join(__dirname, '..', '..', 'package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  const version = pkg.version;
+  process.env.VERSION = version;
+}
 
 // Custom failure handler for yargs
 function handleParseError(msg, err) {
@@ -30,10 +44,11 @@ function handleParseError(msg, err) {
   ); // Add exit:true and exitCode:1
 }
 
+
 async function run() {
   const argv = yargs(hideBin(process.argv))
     .usage("Usage: mcp-hub [options]")
-    .version(VERSION)
+    .version(process.env.VERSION || "v0.0.0")
     .options({
       port: {
         alias: "p",
