@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2025-03-31
+
+### Changed
+
+- Moved runtime dependencies to devDependencies and bundled them for better compatibility
+- Added prepublishOnly script to ensure dist/cli.js is built before publishing
+- Improved build process to include all dependencies in the bundle
+
 ## [1.7.3] - 2025-03-22
 
 ### Fixed
