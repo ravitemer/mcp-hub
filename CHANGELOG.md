@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2025-04-02
+
+### Added
+
+- New POST /restart endpoint to reload config and restart MCP Hub servers
+- Improved server shutdown logging with clearer status messages
+- Extended marketplace cache TTL to 24 hours
+
 ## [1.8.0] - 2025-03-31
 
 ### Changed

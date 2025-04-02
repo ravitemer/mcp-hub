@@ -120,6 +120,18 @@ class ServiceManager {
     clientManager = new ClientManager(this.shutdownDelay);
   }
 
+  async restartHub() {
+    if (this.mcpHub) {
+      logger.info("Restarting MCP Hub");
+      await this.mcpHub.initialize(true)
+      logger.info("MCP Hub restarted successfully");
+      broadcastStatusUpdate({
+        action: "restart",
+        timestamp: new Date().toISOString
+      })
+    }
+  }
+
   async startServer() {
     return new Promise((resolve, reject) => {
       logger.info(`Starting HTTP server on port ${this.port}`, {
@@ -498,6 +510,20 @@ registerRoute(
   }
 );
 
+//reloads the config file, disconnects all existing servers, and reconnects servers from the new config
+registerRoute("POST", "/restart", "Restart MCP Hub", async (req, res) => {
+  try {
+    const { clientId } = req.body;
+    await serviceManager.restartHub();
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    throw wrapError(error, "HUB_RESTART_ERROR");
+  }
+})
+
 // Register server refresh endpoint
 registerRoute(
   "GET",
@@ -605,9 +631,9 @@ router.use((err, req, res, next) => {
   const error = isMCPHubError(err)
     ? err
     : wrapError(err, "REQUEST_ERROR", {
-        path: req.path,
-        method: req.method,
-      });
+      path: req.path,
+      method: req.method,
+    });
 
   // Only send error response if headers haven't been sent
   if (!res.headersSent) {
@@ -637,9 +663,9 @@ export async function startServer({
     const wrappedError =
       error.code === "EADDRINUSE"
         ? new ServerError("Port already in use", {
-            port,
-            error: error.message,
-          })
+          port,
+          error: error.message,
+        })
         : wrapError(error, "SERVER_START_ERROR");
 
     logger.error(

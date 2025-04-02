@@ -8,7 +8,7 @@ import { MCPHubError } from "./utils/errors.js";
 const API_BASE_URL = "https://api.cline.bot/v1/mcp";
 const CACHE_DIR = path.join(os.homedir(), ".mcp-hub", "cache");
 const CACHE_FILE = "marketplace.json";
-const DEFAULT_TTL = 3600000; // 1 hour in milliseconds
+const DEFAULT_TTL = 24 * 60 * 60 * 1000; // 1 day in milliseconds
 
 /**
  * @typedef {Object} McpMarketplaceItem

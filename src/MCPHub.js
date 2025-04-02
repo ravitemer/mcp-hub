@@ -17,12 +17,11 @@ export class MCPHub extends EventEmitter {
     this.shouldWatchConfig = watch && typeof configPathOrObject === "string";
     this.marketplace = marketplace;
   }
-
-  async initialize() {
+  async initialize(isRestarting) {
     try {
       await this.configManager.loadConfig();
 
-      if (this.shouldWatchConfig) {
+      if (this.shouldWatchConfig && !isRestarting) {
         this.configManager.watchConfig();
         this.configManager.on("configChanged", async (newConfig) => {
           await this.updateConfig(newConfig);
@@ -44,13 +43,14 @@ export class MCPHub extends EventEmitter {
   async startConfiguredServers() {
     const config = this.configManager.getConfig();
     const servers = Object.entries(config?.mcpServers || {});
+    await this.disconnectAll();
+
     logger.info(
       `Starting ${servers.length} configured MCP servers in parallel`,
       {
         count: servers.length,
       }
     );
-
     // Create and connect servers in parallel
     const startPromises = servers.map(async ([name, serverConfig]) => {
       try {
@@ -107,7 +107,7 @@ export class MCPHub extends EventEmitter {
     const failed = results.filter((r) => r.status === "error");
     const disabled = results.filter((r) => r.config.disabled === true);
 
-    logger.info("Server initialization completed", {
+    logger.info(`${successful.length}/${servers.length} servers started successfully`, {
       total: servers.length,
       successful: successful.length,
       failed: failed.length,
@@ -228,13 +228,14 @@ export class MCPHub extends EventEmitter {
       );
     });
 
-    logger.info("Server shutdown completed", {
-      total: serverNames.length,
-      successful: successful.length,
-      failed: failed.length,
-      failedServers: failed.map((f) => f.name),
-    });
-
+    if (serverNames.length) {
+      logger.info(`${successful.length} servers disconnected`, {
+        total: serverNames.length,
+        successful: successful.length,
+        failed: failed.length,
+        failedServers: failed.map((f) => f.name),
+      });
+    }
     // Ensure connections map is cleared even if some disconnections failed
     this.connections.clear();
   }
