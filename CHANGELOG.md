@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2025-04-04
+
+### Breaking Changes
+
+- Changed all server operations endpoints to use server_name in request body instead of URL parameters:
+  - `POST /servers/:name/start` -> `POST /servers/start` with server_name in body
+  - `POST /servers/:name/stop` -> `POST /servers/stop` with server_name in body
+  - `GET /servers/:name/info` -> `POST /servers/info` with server_name in body
+  - `POST /servers/:name/refresh` -> `POST /servers/refresh` with server_name in body
+  - `POST /servers/:name/tools` -> `POST /servers/tools` with server_name in body
+  - `POST /servers/:name/resources` -> `POST /servers/resources` with server_name in body
+
+### Added
+
+- New prompts capability allowing MCP servers to provide and execute prompts
+- New POST /servers/prompts endpoint for accessing server prompts
+- Real-time prompt list change notifications via SSE events
+- Updated documentation with prompt-related features and endpoint changes
+
 ## [1.8.1] - 2025-04-02
 
 ### Added

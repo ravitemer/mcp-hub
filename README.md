@@ -217,13 +217,23 @@ GET /api/servers
 #### Get Server Info
 
 ```bash
-GET /api/servers/:name/info
+POST /api/servers/info
+Content-Type: application/json
+
+{
+  "server_name": "example-server"
+}
 ```
 
 #### Refresh Server Capabilities
 
 ```bash
-POST /api/servers/:name/refresh
+POST /api/servers/refresh
+Content-Type: application/json
+
+{
+  "server_name": "example-server"
+}
 ```
 
 Response:
@@ -271,7 +281,12 @@ Response:
 #### Start Server
 
 ```bash
-POST /api/servers/:name/start
+POST /api/servers/start
+Content-Type: application/json
+
+{
+  "server_name": "example-server"
+}
 ```
 
 Response:
@@ -291,7 +306,12 @@ Response:
 #### Stop Server
 
 ```bash
-POST /api/servers/:name/stop?disable=true|false
+POST /api/servers/stop?disable=true|false
+Content-Type: application/json
+
+{
+  "server_name": "example-server"
+}
 ```
 
 The optional `disable` query parameter can be set to `true` to disable the server in the configuration.
@@ -397,8 +417,11 @@ Response:
 #### Execute Tool
 
 ```bash
-POST /api/servers/:name/tools
+POST /api/servers/tools
+Content-Type: application/json
+
 {
+  "server_name": "example-server",
   "tool": "tool_name",
   "arguments": {}
 }
@@ -407,9 +430,69 @@ POST /api/servers/:name/tools
 #### Access Resource
 
 ```bash
-POST /api/servers/:name/resources
+POST /api/servers/resources
+Content-Type: application/json
+
 {
+  "server_name": "example-server",
   "uri": "resource://uri"
+}
+```
+
+#### Get Prompt
+
+```bash
+POST /api/servers/prompts
+Content-Type: application/json
+
+{
+  "server_name": "example-server",
+  "prompt": "prompt_name",
+  "arguments": {}
+}
+```
+
+Response:
+
+```json
+{
+  "result": {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": {
+          "type": "text",
+          "text": "Text response example"
+        }
+      },
+      {
+        "role": "assistant",
+        "content": {
+          "type": "image",
+          "data": "base64_encoded_image_data",
+          "mimeType": "image/png"
+        }
+      }
+    ]
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+#### Restart Hub
+
+```bash
+POST /api/restart
+```
+
+Reloads the configuration file and restarts all MCP servers.
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
 
@@ -476,6 +559,17 @@ The Hub Server provides real-time updates via Server-Sent Events (SSE) at `/api/
   "server": "example-server",
   "resources": ["resource1", "resource2"],
   "resourceTemplates": [],
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+6. **prompt_list_changed** - Server's prompts list has changed
+
+```json
+{
+  "type": "PROMPT",
+  "server": "example-server",
+  "prompts": ["prompt1", "prompt2"],
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
