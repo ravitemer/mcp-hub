@@ -413,16 +413,19 @@ registerRoute(
 // Register server start endpoint
 registerRoute(
   "POST",
-  "/servers/:name/start",
+  "/servers/start",
   "Start a server",
   async (req, res) => {
-    const { name } = req.params;
     try {
-      const status = await serviceManager.mcpHub.startServer(name);
+      const { server_name } = req.body;
+      if (!server_name) {
+        throw new ValidationError("Missing server name", { field: "server_name" });
+      }
+      const status = await serviceManager.mcpHub.startServer(server_name);
 
       broadcastStatusUpdate({
         action: "start",
-        server: name,
+        server: server_name,
         // status: status,
       });
 
@@ -432,7 +435,7 @@ registerRoute(
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      throw wrapError(error, "SERVER_START_ERROR", { server: name });
+      throw wrapError(error, "SERVER_START_ERROR", { server: server_name });
     }
   }
 );
@@ -440,20 +443,23 @@ registerRoute(
 // Register server stop endpoint
 registerRoute(
   "POST",
-  "/servers/:name/stop",
+  "/servers/stop",
   "Stop a server",
   async (req, res) => {
-    const { name } = req.params;
-    const { disable } = req.query;
     try {
+      const { server_name } = req.body;
+      if (!server_name) {
+        throw new ValidationError("Missing server name", { field: "server_name" });
+      }
+      const { disable } = req.query;
       const status = await serviceManager.mcpHub.stopServer(
-        name,
+        server_name,
         disable === "true"
       );
 
       broadcastStatusUpdate({
         action: "stop",
-        server: name,
+        server: server_name,
         status: status,
         disabled: disable === "true",
       });
@@ -464,7 +470,7 @@ registerRoute(
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      throw wrapError(error, "SERVER_STOP_ERROR", { server: name });
+      throw wrapError(error, "SERVER_STOP_ERROR", { server: server_name });
     }
   }
 );
@@ -496,19 +502,25 @@ registerRoute(
 
 // Register server info endpoint
 registerRoute(
-  "GET",
-  "/servers/:name/info",
+  "POST",
+  "/servers/info",
   "Get status of a specific server",
   (req, res) => {
-    const { name } = req.params;
     try {
-      const status = serviceManager.mcpHub.getServerStatus(name);
+      const { server_name } = req.body;
+      if (!server_name) {
+        throw new ValidationError("Missing server name", { field: "server_name" });
+      }
+      const status = serviceManager.mcpHub.getServerStatus(server_name
+      );
       res.json({
         server: status,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      throw wrapError(error, "SERVER_NOT_FOUND", { server: name });
+      throw wrapError(error, "SERVER_NOT_FOUND", {
+        server: server_name
+      });
     }
   }
 );
@@ -529,20 +541,23 @@ registerRoute("POST", "/restart", "Restart MCP Hub", async (req, res) => {
 
 // Register server refresh endpoint
 registerRoute(
-  "GET",
-  "/servers/:name/refresh",
+  "POST",
+  "/servers/refresh",
   "Refresh a server's capabilities",
   async (req, res) => {
-    const { name } = req.params;
     try {
-      const info = await serviceManager.mcpHub.refreshServer(name);
+      const { server_name } = req.body;
+      if (!server_name) {
+        throw new ValidationError("Missing server name", { field: "server_name" });
+      }
+      const info = await serviceManager.mcpHub.refreshServer(server_name);
       res.json({
         status: "ok",
         server: info,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      throw wrapError(error, "SERVER_REFRESH_ERROR", { server: name });
+      throw wrapError(error, "SERVER_REFRESH_ERROR", { server: server_name });
     }
   }
 );
@@ -570,19 +585,21 @@ registerRoute(
 
 registerRoute(
   "POST",
-  "/servers/:name/prompts",
+  "/servers/prompts",
   "Get a prompt from a specific server",
   async (req, res) => {
-    const { name } = req.params;
-    const { prompt, arguments: args } = req.body;
-
-    if (!prompt) {
-      throw new ValidationError("Missing prompt name", { field: "prompt" });
-    }
 
     try {
+      const { server_name, prompt, arguments: args } = req.body;
+
+      if (!server_name) {
+        throw new ValidationError("Missing server name", { field: "server_name" });
+      }
+      if (!prompt) {
+        throw new ValidationError("Missing prompt name", { field: "prompt" });
+      }
       const result = await serviceManager.mcpHub.getPrompt(
-        name,
+        server_name,
         prompt,
         args || {}
       );
@@ -592,7 +609,7 @@ registerRoute(
       });
     } catch (error) {
       throw wrapError(error, error.code || "PROMPT_EXECUTION_ERROR", {
-        server: name,
+        server: server_name,
         prompt,
         ...(error.data || {}),
       });
@@ -604,19 +621,21 @@ registerRoute(
 // Register tool execution endpoint
 registerRoute(
   "POST",
-  "/servers/:name/tools",
+  "/servers/tools",
   "Execute a tool on a specific server",
   async (req, res) => {
-    const { name } = req.params;
-    const { tool, arguments: args } = req.body;
-
-    if (!tool) {
-      throw new ValidationError("Missing tool name", { field: "tool" });
-    }
 
     try {
+      const { server_name, tool, arguments: args } = req.body;
+
+      if (!server_name) {
+        throw new ValidationError("Missing server name", { field: "server_name" });
+      }
+      if (!tool) {
+        throw new ValidationError("Missing tool name", { field: "tool" });
+      }
       const result = await serviceManager.mcpHub.callTool(
-        name,
+        server_name,
         tool,
         args || {}
       );
@@ -626,7 +645,7 @@ registerRoute(
       });
     } catch (error) {
       throw wrapError(error, error.code || "TOOL_EXECUTION_ERROR", {
-        server: name,
+        server: server_name,
         tool,
         ...(error.data || {}),
       });
@@ -637,25 +656,28 @@ registerRoute(
 // Register resource access endpoint
 registerRoute(
   "POST",
-  "/servers/:name/resources",
+  "/servers/resources",
   "Access a resource on a specific server",
   async (req, res) => {
-    const { name } = req.params;
-    const { uri } = req.body;
-
-    if (!uri) {
-      throw new ValidationError("Missing resource URI", { field: "uri" });
-    }
 
     try {
-      const result = await serviceManager.mcpHub.readResource(name, uri);
+
+      const { server_name, uri } = req.body;
+      if (!server_name) {
+        throw new ValidationError("Missing server name", { field: "server_name" });
+      }
+
+      if (!uri) {
+        throw new ValidationError("Missing resource URI", { field: "uri" });
+      }
+      const result = await serviceManager.mcpHub.readResource(server_name, uri);
       res.json({
         result,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
       throw wrapError(error, error.code || "RESOURCE_READ_ERROR", {
-        server: name,
+        server: server_name,
         uri,
         ...(error.data || {}),
       });
