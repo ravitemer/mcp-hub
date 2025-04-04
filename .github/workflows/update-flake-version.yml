@@ -1,0 +1,73 @@
+name: Update Flake Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_pr:
+        description: 'Create a PR with changes'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  update-flake:
+    name: Update version and hash in flake.nix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Extract version from package.json
+        id: package_version
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Package version: $VERSION"
+
+      - name: Update version in flake.nix
+        run: |
+          sed -i "s/version = \"[0-9]*\.[0-9]*\.[0-9]*\";/version = \"$VERSION\";/" flake.nix
+          echo "Updated version in flake.nix to $VERSION"
+
+      - name: Calculate npmDepsHash
+        id: npm_hash
+        run: |
+          # Create a temporary directory to prevent polluting the source
+          mkdir -p temp-npm-calc
+          cp package.json package-lock.json temp-npm-calc/
+          cd temp-npm-calc
+          
+          # Use prefetch-npm-deps from nixpkgs to calculate the correct hash
+          HASH=$(nix run nixpkgs#prefetch-npm-deps -- ./package-lock.json)
+          echo "HASH=$HASH" >> $GITHUB_ENV
+          echo "New npmDepsHash: $HASH"
+          cd ..
+          rm -rf temp-npm-calc
+
+      - name: Update hash in flake.nix
+        run: |
+          sed -i "s|npmDepsHash = \"sha256-[A-Za-z0-9+/]*=\";|npmDepsHash = \"$HASH\";|" flake.nix
+          echo "Updated npmDepsHash in flake.nix"
+
+      - name: Create Pull Request
+        if: ${{ github.event.inputs.create_pr == 'true' }}
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "Update flake.nix to version ${{ env.VERSION }} with new hash"
+          title: "Update flake.nix to version ${{ env.VERSION }}"
+          body: |
+            This PR updates flake.nix with:
+            - New version: ${{ env.VERSION }}
+            - New npmDepsHash: ${{ env.HASH }}
+            
+            This update was performed automatically by a GitHub workflow.
+          branch: update-flake-version-${{ env.VERSION }}
+          delete-branch: true
