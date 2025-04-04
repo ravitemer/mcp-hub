@@ -113,6 +113,9 @@ class ServiceManager {
         });
       }
     );
+    this.mcpHub.on("promptsChanged", ({ server, prompts }) => {
+      broadcastCapabilityChange("PROMPT", server, { prompts });
+    });
 
     await this.mcpHub.initialize();
 
@@ -562,6 +565,41 @@ registerRoute(
     }
   }
 );
+
+//Register prompt endpoint
+
+registerRoute(
+  "POST",
+  "/servers/:name/prompts",
+  "Get a prompt from a specific server",
+  async (req, res) => {
+    const { name } = req.params;
+    const { prompt, arguments: args } = req.body;
+
+    if (!prompt) {
+      throw new ValidationError("Missing prompt name", { field: "prompt" });
+    }
+
+    try {
+      const result = await serviceManager.mcpHub.getPrompt(
+        name,
+        prompt,
+        args || {}
+      );
+      res.json({
+        result,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw wrapError(error, error.code || "PROMPT_EXECUTION_ERROR", {
+        server: name,
+        prompt,
+        ...(error.data || {}),
+      });
+    }
+  }
+)
+
 
 // Register tool execution endpoint
 registerRoute(

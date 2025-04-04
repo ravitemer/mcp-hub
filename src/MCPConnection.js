@@ -12,6 +12,8 @@ import {
   LoggingMessageNotificationSchema,
   ToolListChangedNotificationSchema,
   ResourceListChangedNotificationSchema,
+  PromptListChangedNotificationSchema,
+  ListPromptsResultSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import EventEmitter from "events";
 import logger from "./utils/logger.js";
@@ -47,6 +49,7 @@ export class MCPConnection extends EventEmitter {
     this.transport = null;
     this.tools = [];
     this.resources = [];
+    this.prompts = [];
     this.resourceTemplates = [];
     this.status = config.disabled ? "disabled" : "disconnected"; // disabled | disconnected | connecting | connected
     this.error = null;
@@ -245,6 +248,18 @@ export class MCPConnection extends EventEmitter {
         });
       }
     );
+    this.client.setNotificationHandler(
+      PromptListChangedNotificationSchema,
+      async () => {
+        logger.debug(
+          `Received prompts list changed notification from ${this.name}`
+        );
+        await this.updateCapabilities();
+        this.emit("promptsChanged", {
+          server: this.name,
+          prompts: this.prompts,
+        });
+      })
 
     // Handle general logging messages
     this.client.setNotificationHandler(
@@ -257,6 +272,7 @@ export class MCPConnection extends EventEmitter {
       }
     );
   }
+
 
   async updateCapabilities() {
     //skip for disabled servers
@@ -282,7 +298,7 @@ export class MCPConnection extends EventEmitter {
 
     try {
       // Fetch all capabilities before updating state
-      const [templatesResponse, toolsResponse, resourcesResponse] =
+      const [templatesResponse, toolsResponse, resourcesResponse, promptsResponse] =
         await Promise.all([
           safeRequest(
             "resources/templates/list",
@@ -290,12 +306,15 @@ export class MCPConnection extends EventEmitter {
           ),
           safeRequest("tools/list", ListToolsResultSchema),
           safeRequest("resources/list", ListResourcesResultSchema),
+          safeRequest("prompts/list", ListPromptsResultSchema),
         ]);
 
       // Update local state atomically, defaulting to empty arrays if capability not supported
+      //TODO: handle pagination
       this.resourceTemplates = templatesResponse?.resourceTemplates || [];
       this.tools = toolsResponse?.tools || [];
       this.resources = resourcesResponse?.resources || [];
+      this.prompts = promptsResponse?.prompts || [];
 
       // logger.info(`Updated capabilities for server '${this.name}'`, {
       //   server: this.name,
@@ -319,7 +338,56 @@ export class MCPConnection extends EventEmitter {
       this.resourceTemplates = [];
       this.tools = [];
       this.resources = [];
+      this.prompts = [];
     }
+  }
+
+
+  async getPrompt(promptName, args) {
+    if (!this.client) {
+      throw new ToolError("Server not initialized", {
+        server: this.name,
+        prompt: promptName,
+      });
+    }
+    if (this.status !== "connected") {
+      throw new ToolError("Server not connected", {
+        server: this.name,
+        prompt: promptName,
+        status: this.status,
+      });
+    }
+
+    const prompt = this.prompts.find((p) => p.name === promptName);
+    if (!prompt) {
+      throw new ToolError("Prompt not found", {
+        server: this.name,
+        prompt: promptName,
+        availablePrompts: this.prompts.map((p) => p.name),
+      });
+    }
+    //check args, it should be either a list or an object or null
+    if (args && !Array.isArray(args) && typeof args !== "object") {
+      throw new ToolError("Invalid arguments", {
+        server: this.name,
+        prompt: promptName,
+        args,
+      });
+    }
+
+    try {
+      return await this.client.getPrompt({
+        name: promptName,
+        arguments: args,
+      })
+    } catch (error) {
+      throw wrapError(error, "PROMPT_EXECUTION_ERROR", {
+        server: this.name,
+        prompt: promptName,
+        args,
+      });
+    }
+
   }
 
   /*
@@ -444,11 +512,14 @@ export class MCPConnection extends EventEmitter {
     }
   }
 
+
+
   async resetState(error) {
     this.client = null;
     this.transport = null;
     this.tools = [];
     this.resources = [];
+    this.prompts = [];
     this.resourceTemplates = [];
     this.status = this.config.disabled ? "disabled" : "disconnected"; // disabled | disconnected | connecting | connected
     this.error = error || null;
@@ -477,6 +548,7 @@ export class MCPConnection extends EventEmitter {
         tools: this.tools,
         resources: this.resources,
         resourceTemplates: this.resourceTemplates,
+        prompts: this.prompts,
       },
       uptime: this.getUptime(),
       lastStarted: this.lastStarted,

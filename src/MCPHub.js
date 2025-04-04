@@ -75,6 +75,9 @@ export class MCPHub extends EventEmitter {
         connection.on("resourcesChanged", (data) =>
           this.emit("resourcesChanged", data)
         );
+        connection.on("promptsChanged", (data) =>
+          this.emit("promptsChanged", data)
+        );
         connection.on("notification", (data) =>
           this.emit("notification", data)
         );
@@ -154,7 +157,7 @@ export class MCPHub extends EventEmitter {
     if (!connection) {
       throw new ServerError("Server connection not found", { server: name });
     }
-
+    connection.removeAllListeners();
     return await connection.stop(disable);
   }
 
@@ -276,6 +279,18 @@ export class MCPHub extends EventEmitter {
       });
     }
     return await connection.readResource(uri);
+  }
+
+  async getPrompt(serverName, promtName, args) {
+    const connection = this.connections.get(serverName);
+    if (!connection) {
+      throw new ServerError("Server not found", {
+        server: serverName,
+        operation: "get_prompt",
+        prompt: promtName,
+      });
+    }
+    return await connection.getPrompt(promtName, args);
   }
 
   async refreshServer(name) {
