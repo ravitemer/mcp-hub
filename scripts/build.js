@@ -22,9 +22,11 @@ globalThis.require = require;
 `
       },
       external: [
+        // These packages will be bundled
         // '@modelcontextprotocol/sdk',
         // 'express',
         // 'yargs',
+        // 'reconnecting-eventsource',
       ],
       define: {
         'process.env.NODE_ENV': '"production"',
