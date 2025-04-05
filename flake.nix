@@ -26,7 +26,7 @@
           inherit nodejs;
 
           nativeBuildInputs = [nodejs];
-          npmDepsHash = "sha256-69kP2n71U6/2cMy68XKEXUNmz3zekRwasQpgB3vI9o0=";
+          npmDepsHash = "sha256-viBafGv3nLpF1O9rBmboGzn/NyYqNVvmWIVMZAM1pAA=";
         };
       in {
         packages = {
