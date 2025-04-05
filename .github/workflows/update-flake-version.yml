@@ -62,5 +62,6 @@ jobs:
             
             This update was performed automatically by a GitHub workflow.
           branch: update-flake-version-${{ env.VERSION }}
+          base: main  # Specify the base branch
           delete-branch: true
 
