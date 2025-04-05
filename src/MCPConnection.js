@@ -3,6 +3,8 @@ import {
   StdioClientTransport,
   getDefaultEnvironment,
 } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import ReconnectingEventSource from "reconnecting-eventsource";
 import {
   ListToolsResultSchema,
   ListResourcesResultSchema,
@@ -47,6 +49,7 @@ export class MCPConnection extends EventEmitter {
     this.config = config;
     this.client = null;
     this.transport = null;
+    this.transportType = config.type; // Store the transport type from config
     this.tools = [];
     this.resources = [];
     this.prompts = [];
@@ -128,29 +131,72 @@ export class MCPConnection extends EventEmitter {
         env[key] = env[key] ? env[key] : process.env[key];
       });
 
-      this.transport = new StdioClientTransport({
-        command: this.config.command,
-        args: this.config.args || [],
-        env: {
-          //INFO: getDefaultEnvironment is imp in order to start mcp servers properly
-          ...getDefaultEnvironment(),
-          ...(process.env.MCP_ENV_VARS
-            ? JSON.parse(process.env.MCP_ENV_VARS)
-            : {}),
-          ...env,
-        },
-        stderr: "pipe",
-      });
+      // Create appropriate transport based on transport type
+      if (this.transportType === 'sse') {
+        // SSE transport setup with reconnection support
+        const reconnectingEventSourceOptions = {
+          max_retry_time: 5000, // Maximum time between retries (5 seconds)
+          withCredentials: this.config.headers?.["Authorization"] ? true : false,
+        };
 
-      // Handle transport errors
+        // Use ReconnectingEventSource for automatic reconnection
+        global.EventSource = ReconnectingEventSource;
+        
+        this.transport = new SSEClientTransport(new URL(this.config.url), {
+          requestInit: {
+            headers: this.config.headers || {},
+          },
+          eventSourceInit: reconnectingEventSourceOptions
+        });
+
+        // Log reconnection attempts
+        if (this.transport.eventSource) {
+          this.transport.eventSource.onretry = (event) => {
+            logger.info(`Attempting to reconnect to SSE server '${this.name}'`, {
+              server: this.name,
+              attempt: event.retryCount,
+              delay: event.retryDelay
+            });
+          };
+        }
+      } else {
+        // Default to STDIO transport
+        this.transport = new StdioClientTransport({
+          command: this.config.command,
+          args: this.config.args || [],
+          env: {
+            //INFO: getDefaultEnvironment is imp in order to start mcp servers properly
+            ...getDefaultEnvironment(),
+            ...(process.env.MCP_ENV_VARS
+              ? JSON.parse(process.env.MCP_ENV_VARS)
+              : {}),
+            ...env,
+          },
+          stderr: "pipe",
+        });
+      }
+
+      // Handle transport errors with transport-specific details
       this.transport.onerror = (error) => {
-        const connectionError = new ConnectionError(
-          "Failed to communicate with server",
-          {
-            server: this.name,
-            error: error.message,
+        const errorDetails = {
+          server: this.name,
+          type: this.transportType,
+          error: error.message,
+        };
+
+        // Add transport-specific error details
+        if (this.transportType === 'sse') {
+          errorDetails.url = this.config.url;
+          if (error instanceof Error && error.cause) {
+            errorDetails.cause = error.cause;
           }
+        }
+
+        const connectionError = new ConnectionError(
+          `Failed to communicate with ${this.transportType} server`,
+          errorDetails
         );
+
         logger.error(
           connectionError.code,
           connectionError.message,
@@ -160,28 +206,44 @@ export class MCPConnection extends EventEmitter {
         this.error = error.message;
         this.status = "disconnected";
         this.startTime = null;
+
+        // Emit error event for handling at higher levels
+        this.emit("connectionError", connectionError);
       };
 
       this.transport.onclose = () => {
-        logger.info(`Transport connection closed for server '${this.name}'`, {
-          server: this.name,
-        });
+        logger.info(
+          `${this.transportType.toUpperCase()} transport connection closed for server '${this.name}'`,
+          {
+            server: this.name,
+            type: this.transportType,
+            ...(this.transportType === 'sse' ? { url: this.config.url } : {})
+          }
+        );
         this.status = "disconnected";
         this.startTime = null;
+
+        // Emit close event for handling reconnection if needed
+        this.emit("connectionClosed", {
+          server: this.name,
+          type: this.transportType
+        });
       };
 
-      // Set up stderr handling before connecting
-      const stderrStream = this.transport.stderr;
-      if (stderrStream) {
-        stderrStream.on("data", (data) => {
-          const errorOutput = data.toString();
-          const error = new ConnectionError("Server error output", {
-            server: this.name,
-            error: errorOutput,
+      // Set up stderr handling before connecting (STDIO only)
+      if (this.transportType !== 'sse') {
+        const stderrStream = this.transport.stderr;
+        if (stderrStream) {
+          stderrStream.on("data", (data) => {
+            const errorOutput = data.toString();
+            const error = new ConnectionError("Server error output", {
+              server: this.name,
+              error: errorOutput,
+            });
+            logger.error(error.code, error.message, error.data, false);
+            this.error = errorOutput;
           });
-          logger.error(error.code, error.message, error.data, false);
-          this.error = errorOutput;
-        });
+        }
       }
 
       // Connect client (this will start the transport)
@@ -542,6 +604,7 @@ export class MCPConnection extends EventEmitter {
     return {
       name: this.name, // Original mcpId
       displayName: this.displayName, // Friendly name from marketplace
+      transportType: this.transportType, // Include transport type in server info
       status: this.status,
       error: this.error,
       capabilities: {
