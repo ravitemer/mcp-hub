@@ -2,15 +2,8 @@ name: Update Flake Version
 
 on:
   workflow_dispatch:
-    inputs:
-      create_pr:
-        description: 'Create a PR with changes'
-        required: false
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
+  release:
+    types: [created]
 
 jobs:
   update-flake:
@@ -58,7 +51,6 @@ jobs:
           echo "Updated npmDepsHash in flake.nix"
 
       - name: Create Pull Request
-        if: ${{ github.event.inputs.create_pr == 'true' }}
         uses: peter-evans/create-pull-request@v7
         with:
           commit-message: "Update flake.nix to version ${{ env.VERSION }} with new hash"
@@ -71,3 +63,4 @@ jobs:
             This update was performed automatically by a GitHub workflow.
           branch: update-flake-version-${{ env.VERSION }}
           delete-branch: true
+
