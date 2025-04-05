@@ -128,13 +128,21 @@ MCP Hub uses a JSON configuration file to define managed servers:
 ```json
 {
   "mcpServers": {
-    "example-server": {
+    "stdio-server": {
       "command": "npx",
       "args": ["example-server"],
       "env": {
         "API_KEY": "", // Will use process.env.API_KEY
         "DEBUG": "true", // Will use this value
         "SECRET_TOKEN": null // Will use process.env.SECRET_TOKEN
+      },
+      "disabled": false
+    },
+    "sse-server": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer token",
+        "Content-Type": "application/json"
       },
       "disabled": false
     }
@@ -144,10 +152,28 @@ MCP Hub uses a JSON configuration file to define managed servers:
 
 ### Configuration Options
 
-- **command**: Command to start the MCP server
+MCP Hub supports two types of servers: STDIO (local) and SSE (remote). The server type is automatically determined based on the configuration fields provided.
+
+#### STDIO Server Options
+
+- **command**: Command to start the local MCP server
 - **args**: Array of command line arguments
 - **env**: Environment variables for the server. If a variable is specified with a falsy value (empty string, null, undefined), it will fall back to using the corresponding system environment variable if available.
 - **disabled**: Whether the server is disabled (default: false)
+
+#### SSE Server Options
+
+- **url**: The URL of the remote SSE server endpoint
+- **headers**: Optional HTTP headers for the SSE connection (e.g., for authentication)
+- **disabled**: Whether the server is disabled (default: false)
+
+##### Server Type Detection
+
+The server type (STDIO or SSE) is automatically determined based on the presence of specific fields:
+- If `command` is present → STDIO server
+- If `url` is present → SSE server
+
+Note: A server configuration cannot mix STDIO and SSE fields - it must be one type or the other.
 
 ## Example Integrations
 
