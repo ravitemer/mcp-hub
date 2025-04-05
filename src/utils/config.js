@@ -47,21 +47,69 @@ export class ConfigManager extends EventEmitter {
 
       // Validate each server configuration
       for (const [name, server] of Object.entries(newConfig.mcpServers)) {
-        if (!server.command) {
-          throw new ConfigError(`Server '${name}' missing command`, {
-            server: name,
-            config: server,
-          });
-        }
-        if (!Array.isArray(server.args)) {
-          server.args = []; // Default to empty array if not provided
-        }
-        if (server.env && typeof server.env !== "object") {
+        const hasStdioFields = server.command !== undefined;
+        const hasSseFields = server.url !== undefined;
+
+        // Check for mixed fields
+        if (hasStdioFields && hasSseFields) {
           throw new ConfigError(
-            `Server '${name}' has invalid environment config`,
+            `Server '${name}' cannot mix stdio and sse fields`,
             {
               server: name,
-              env: server.env,
+              config: server,
+            }
+          );
+        }
+
+        // Validate based on detected type
+        if (hasStdioFields) {
+          // STDIO validation
+          if (!server.command) {
+            throw new ConfigError(`Server '${name}' missing command value`, {
+              server: name,
+              config: server,
+            });
+          }
+          if (!Array.isArray(server.args)) {
+            server.args = []; // Default to empty array if not provided
+          }
+          if (server.env && typeof server.env !== "object") {
+            throw new ConfigError(
+              `Server '${name}' has invalid environment config`,
+              {
+                server: name,
+                env: server.env,
+              }
+            );
+          }
+          server.type = "stdio"; // Add type for internal use
+        } else if (hasSseFields) {
+          // SSE validation
+          try {
+            new URL(server.url); // Validate URL format
+          } catch (error) {
+            throw new ConfigError(`Server '${name}' has invalid url`, {
+              server: name,
+              url: server.url,
+              error: error.message,
+            });
+          }
+          if (server.headers && typeof server.headers !== "object") {
+            throw new ConfigError(
+              `Server '${name}' has invalid headers config`,
+              {
+                server: name,
+                headers: server.headers,
+              }
+            );
+          }
+          server.type = "sse"; // Add type for internal use
+        } else {
+          throw new ConfigError(
+            `Server '${name}' must include either command (for stdio) or url (for sse)`,
+            {
+              server: name,
+              config: server,
             }
           );
         }
