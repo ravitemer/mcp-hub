@@ -306,8 +306,8 @@ registerRoute(
   "/marketplace",
   "Get marketplace catalog with filtering and sorting",
   async (req, res) => {
+    const { search, category, tags, sort } = req.query;
     try {
-      const { search, category, tags, sort } = req.query;
       const items = await marketplace.getCatalog({
         search,
         category,
@@ -331,8 +331,8 @@ registerRoute(
   "/marketplace/details",
   "Get detailed server information",
   async (req, res) => {
+    const { mcpId } = req.body;
     try {
-      const { mcpId } = req.body;
       if (!mcpId) {
         throw new ValidationError("Missing mcpId in request body");
       }
@@ -416,8 +416,8 @@ registerRoute(
   "/servers/start",
   "Start a server",
   async (req, res) => {
+    const { server_name } = req.body;
     try {
-      const { server_name } = req.body;
       if (!server_name) {
         throw new ValidationError("Missing server name", { field: "server_name" });
       }
@@ -446,8 +446,8 @@ registerRoute(
   "/servers/stop",
   "Stop a server",
   async (req, res) => {
+    const { server_name } = req.body;
     try {
-      const { server_name } = req.body;
       if (!server_name) {
         throw new ValidationError("Missing server name", { field: "server_name" });
       }
@@ -506,8 +506,8 @@ registerRoute(
   "/servers/info",
   "Get status of a specific server",
   (req, res) => {
+    const { server_name } = req.body;
     try {
-      const { server_name } = req.body;
       if (!server_name) {
         throw new ValidationError("Missing server name", { field: "server_name" });
       }
@@ -527,8 +527,8 @@ registerRoute(
 
 //reloads the config file, disconnects all existing servers, and reconnects servers from the new config
 registerRoute("POST", "/restart", "Restart MCP Hub", async (req, res) => {
+  const { clientId } = req.body;
   try {
-    const { clientId } = req.body;
     await serviceManager.restartHub();
     res.json({
       status: "ok",
@@ -545,8 +545,8 @@ registerRoute(
   "/servers/refresh",
   "Refresh a server's capabilities",
   async (req, res) => {
+    const { server_name } = req.body;
     try {
-      const { server_name } = req.body;
       if (!server_name) {
         throw new ValidationError("Missing server name", { field: "server_name" });
       }
@@ -589,8 +589,8 @@ registerRoute(
   "Get a prompt from a specific server",
   async (req, res) => {
 
+    const { server_name, prompt, arguments: args } = req.body;
     try {
-      const { server_name, prompt, arguments: args } = req.body;
 
       if (!server_name) {
         throw new ValidationError("Missing server name", { field: "server_name" });
@@ -625,8 +625,8 @@ registerRoute(
   "Execute a tool on a specific server",
   async (req, res) => {
 
+    const { server_name, tool, arguments: args } = req.body;
     try {
-      const { server_name, tool, arguments: args } = req.body;
 
       if (!server_name) {
         throw new ValidationError("Missing server name", { field: "server_name" });
@@ -660,9 +660,9 @@ registerRoute(
   "Access a resource on a specific server",
   async (req, res) => {
 
+    const { server_name, uri } = req.body;
     try {
 
-      const { server_name, uri } = req.body;
       if (!server_name) {
         throw new ValidationError("Missing server name", { field: "server_name" });
       }
