@@ -45,13 +45,13 @@ mcp-hub --port 3000 --config path/to/config.json
 ```
 
 ### CLI Options
-
 ```bash
 Options:
   --port            Port to run the server on (default: 3000)
   --config          Path to config file (required)
   --watch           Watch config file for changes (default: false)
-  --shutdown-delay  Delay in milliseconds before shutting down when no clients are connected (default: 0)
+  --auto-shutdown   Whether to automatically shutdown when no clients are connected (default: false)
+  --shutdown-delay  Delay in milliseconds before shutting down when auto-shutdown is enabled (default: 0)
   -h, --help       Show help information
 ```
 
