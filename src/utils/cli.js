@@ -68,9 +68,14 @@ async function run() {
         type: "boolean",
         default: false,
       },
+      "auto-shutdown": {
+        describe: "Whether to automatically shutdown when no clients are connected",
+        type: "boolean",
+        default: false
+      },
       "shutdown-delay": {
         describe:
-          "Delay in milliseconds before shutting down when no clients are connected",
+          "Delay in milliseconds before shutting down when auto-shutdown is enabled and no clients are connected",
         type: "number",
         default: 0,
       },
@@ -85,6 +90,7 @@ async function run() {
       port: argv.port,
       config: argv.config,
       watch: argv.watch,
+      autoShutdown: argv["auto-shutdown"],
       shutdownDelay: argv["shutdown-delay"],
     });
   } catch (error) {

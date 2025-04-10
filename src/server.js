@@ -74,9 +74,10 @@ let clientManager = null;
 let marketplace = null;
 
 class ServiceManager {
-  constructor(config, port, watch = false, shutdownDelay = 0) {
+  constructor(config, port, watch = false, autoShutdown = false, shutdownDelay = 0) {
     this.config = config;
     this.port = port;
+    this.autoShutdown = autoShutdown;
     this.shutdownDelay = shutdownDelay;
     this.watch = watch;
     this.mcpHub = null;
@@ -120,7 +121,7 @@ class ServiceManager {
     await this.mcpHub.initialize();
 
     // Initialize client manager with shutdown delay
-    clientManager = new ClientManager(this.shutdownDelay);
+    clientManager = new ClientManager(this.autoShutdown, this.shutdownDelay);
   }
 
   async restartHub() {
@@ -711,9 +712,10 @@ export async function startServer({
   port,
   config,
   watch = false,
+  autoShutdown = false,
   shutdownDelay = 0,
 } = {}) {
-  serviceManager = new ServiceManager(config, port, watch, shutdownDelay);
+  serviceManager = new ServiceManager(config, port, watch, autoShutdown, shutdownDelay);
 
   try {
     serviceManager.setupSignalHandlers();

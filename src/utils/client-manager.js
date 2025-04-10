@@ -2,9 +2,10 @@ import logger from "./logger.js";
 import { ValidationError } from "./errors.js";
 
 export class ClientManager {
-  constructor(shutdownDelayMs = 0) {
+  constructor(autoShutdown = false, shutdownDelayMs = 0) {
     this.clients = new Set();
     this.shutdownTimer = null;
+    this.autoShutdown = autoShutdown;
     this.shutdownDelayMs = shutdownDelayMs;
   }
 
@@ -64,9 +65,9 @@ export class ClientManager {
       }
     );
 
-    if (this.clients.size === 0 && !this.shutdownTimer) {
+    if (this.clients.size === 0 && !this.shutdownTimer && this.autoShutdown) {
       logger.info(
-        `Starting shutdown timer for ${this.shutdownDelayMs}ms - no active clients`,
+        `Auto-shutdown enabled - Starting shutdown timer for ${this.shutdownDelayMs}ms - no active clients`,
         {
           delayMs: this.shutdownDelayMs,
         }
