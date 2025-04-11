@@ -100,6 +100,20 @@ class ServiceManager {
       marketplace,
     });
 
+    this.mcpHub.on("configChangeDetected", () => {
+      broadcastStatusUpdate({
+        action: "config_change_detected",
+        timestamp: new Date().toISOString(),
+      });
+    })
+
+    this.mcpHub.on("configChangeHandled", () => {
+      broadcastStatusUpdate({
+        action: "config_change_handled",
+        timestamp: new Date().toISOString(),
+      });
+    })
+
     // Set up capability change handlers before initialization
     this.mcpHub.on("toolsChanged", ({ server, tools }) => {
       broadcastCapabilityChange("TOOL", server, { tools });
