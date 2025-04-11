@@ -23,8 +23,8 @@ export class MCPHub extends EventEmitter {
 
       if (this.shouldWatchConfig && !isRestarting) {
         this.configManager.watchConfig();
-        this.configManager.on("configChanged", async (newConfig) => {
-          await this.updateConfig(newConfig);
+        this.configManager.on("configChanged", async (newConfig, changes) => {
+          await this.handleConfigUpdated(newConfig, changes);
         });
       }
 
@@ -161,14 +161,72 @@ export class MCPHub extends EventEmitter {
     return await connection.stop(disable);
   }
 
-  async updateConfig(newConfigOrPath) {
+  async handleConfigUpdated(newConfig, changes) {
     try {
-      await this.configManager.updateConfig(newConfigOrPath);
-      await this.startConfiguredServers();
+      if (changes.added.length === 0 && changes.removed.length === 0 && changes.modified.length === 0) {
+        // logger.info("No significant config changes detected", {
+        //   message: "Configuration change involved only non-critical fields, no server updates needed",
+        //   unchangedServers: changes.unchanged.length
+        // });
+        return;
+      }
+      this.emit("configChangeDetected", changes);
+      // Handle new servers
+      for (const name of changes.added) {
+        const serverConfig = newConfig.mcpServers[name];
+        await this.connectServer(name, serverConfig);
+        logger.info(`Added new server '${name}'`, {
+          server: name,
+          status: "added",
+          message: `New server '${name}' has been added and connected`
+        });
+      }
+      // Handle removed servers first
+      for (const name of changes.removed) {
+        await this.disconnectServer(name);
+        this.connections.delete(name); // Clean up the connection
+        logger.info(`Removed server '${name}'`, {
+          server: name,
+          status: "removed",
+          message: `Server '${name}' has been removed from configuration`
+        });
+      }
+
+      // Handle modified servers
+      for (const name of changes.modified) {
+        const serverConfig = newConfig.mcpServers[name];
+        const connection = this.connections.get(name);
+
+        // If disabled state changed
+        if (serverConfig.disabled !== connection?.disabled) {
+          if (serverConfig.disabled) {
+            await this.stopServer(name, true);
+            logger.info(`Server '${name}' disabled`)
+          } else {
+            await this.startServer(name);
+            logger.info(`Server '${name}' enabled`)
+          }
+          continue;
+        }
+
+        // For other changes, reconnect with new config
+        await this.disconnectServer(name);
+        await this.connectServer(name, serverConfig);
+        logger.info(`Updated server '${name}'`)
+      }
+
     } catch (error) {
-      throw wrapError(error, "CONFIG_UPDATE_ERROR", {
-        isPathUpdate: typeof newConfigOrPath === "string",
-      });
+      logger.error(
+        error.code || "CONFIG_UPDATE_ERROR",
+        error.message || "Error updating configuration",
+        {
+          error: error.message,
+          changes,
+        },
+        false
+      )
+    } finally {
+      this.emit("configChangeHandled")
     }
   }
 

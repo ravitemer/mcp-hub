@@ -103,4 +103,16 @@ const logger = {
   },
 };
 
+//handle unhandled errors
+
+process.on("uncaughtException", (error) => {
+  logger.error(
+    error.code || "UNHANDLED_ERROR",
+    error.message || "An unhandled error occurred",
+    { message: error.message, stack: error.stack },
+    false,
+  );
+})
+
+
 export default logger;

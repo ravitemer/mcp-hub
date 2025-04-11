@@ -141,7 +141,7 @@ export class MCPConnection extends EventEmitter {
 
         // Use ReconnectingEventSource for automatic reconnection
         global.EventSource = ReconnectingEventSource;
-        
+
         this.transport = new SSEClientTransport(new URL(this.config.url), {
           requestInit: {
             headers: this.config.headers || {},
@@ -347,13 +347,13 @@ export class MCPConnection extends EventEmitter {
         const response = await this.client.request({ method }, schema);
         return response;
       } catch (error) {
-        logger.debug(
-          `Server '${this.name}' does not support capability '${method}'`,
-          {
-            server: this.name,
-            error: error.message,
-          }
-        );
+        // logger.debug(
+        //   `Server '${this.name}' does not support capability '${method}'`,
+        //   {
+        //     server: this.name,
+        //     error: error.message,
+        //   }
+        // );
         return null;
       }
     };
