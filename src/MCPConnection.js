@@ -33,12 +33,14 @@ export class MCPConnection extends EventEmitter {
 
     // Set display name from marketplace
     this.displayName = name; // Default to mcpId
+    let serverDescription = ""
     if (marketplace?.cache?.catalog?.items) {
       const item = marketplace.cache.catalog.items.find(
         (item) => item.mcpId === name
       );
       if (item?.name) {
         this.displayName = item.name;
+        serverDescription = item.description || ""
         logger.debug(`Using marketplace name for server '${name}'`, {
           name,
           displayName: item.name,
@@ -47,6 +49,7 @@ export class MCPConnection extends EventEmitter {
     }
 
     this.config = config;
+    this.description = config.description ? config.description : serverDescription
     this.client = null;
     this.transport = null;
     this.transportType = config.type; // Store the transport type from config
@@ -279,6 +282,12 @@ export class MCPConnection extends EventEmitter {
     }
   }
 
+  removeNotificationHandlers() {
+    this.client.removeNotificationHandler(ToolListChangedNotificationSchema)
+    this.client.removeNotificationHandler(ResourceListChangedNotificationSchema)
+    this.client.removeNotificationHandler(PromptListChangedNotificationSchema)
+    this.client.removeNotificationHandler(LoggingMessageNotificationSchema)
+  }
   setupNotificationHandlers() {
     // Handle tool list changes
     this.client.setNotificationHandler(
@@ -591,12 +600,14 @@ export class MCPConnection extends EventEmitter {
   }
 
   async disconnect(error) {
+    if (this.client) {
+      this.removeNotificationHandlers();
+      await this.client.close();
+    }
     if (this.transport) {
       await this.transport.close();
     }
-    if (this.client) {
-      await this.client.close();
-    }
+
     this.resetState(error);
   }
 
@@ -604,6 +615,7 @@ export class MCPConnection extends EventEmitter {
     return {
       name: this.name, // Original mcpId
       displayName: this.displayName, // Friendly name from marketplace
+      description: this.description,
       transportType: this.transportType, // Include transport type in server info
       status: this.status,
       error: this.error,

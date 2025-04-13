@@ -12,7 +12,8 @@ class Logger {
   constructor(options = {}) {
     this.logFile = options.logFile || path.join(LOG_DIR, LOG_FILE);
     this.logLevel = options.logLevel || 'info';
-    this.enableFileLogging = options.enableFileLogging !== false;
+    this.enableFileLogging = options.enableFileLogging !== false
+    this.sseManager = null;
 
     this.LOG_LEVELS = {
       error: 0,
@@ -27,6 +28,14 @@ class Logger {
   }
 
   /**
+   * Sets the SSE manager for real-time log streaming
+   * @param {SSEManager} manager SSE manager instance
+   */
+  setSseManager(manager) {
+    this.sseManager = manager;
+  }
+
+  /**
    * Initialize log file
    */
   initializeLogFile() {
@@ -35,6 +44,7 @@ class Logger {
     try {
       const logDir = path.dirname(this.logFile);
       fs.mkdirSync(logDir, { recursive: true });
+      //--empty the log file
       fs.writeFileSync(this.logFile, '');
     } catch (error) {
       console.error(`Failed to initialize log file: ${error.message}`);
@@ -47,6 +57,7 @@ class Logger {
    */
   setupErrorHandlers() {
     const handleError = (error) => {
+      //INFO: when mcp-hub is not started from a terminal, but bya program when the program is closed, writing to stdout,stderr will throw an EPIPE error
       if (error.code !== 'EPIPE') {
         console.error('Stream error:', error);
       }
@@ -79,20 +90,27 @@ class Logger {
 
     console[consoleMethod](JSON.stringify(entry));
 
-    // File output
-    if (this.enableFileLogging) {
-      try {
-        fs.appendFileSync(this.logFile, entry.message + '\n');
-      } catch (error) {
-        if (error.code !== 'EPIPE') {
-          console.error(`Failed to write to log file: ${error.message}`);
-          this.enableFileLogging = false;
-        }
-      }
+    this.file(entry.message)
+    // Broadcast through SSE if available and appropriate level
+    if (this.sseManager && this.LOG_LEVELS[level] <= this.LOG_LEVELS[this.logLevel]) {
+      this.sseManager.broadcast('log', entry);
     }
 
     if (exit) {
       process.exit(exitCode);
+    }
+  }
+
+  file(message, data = {}) {
+    // File output
+    if (this.enableFileLogging) {
+      try {
+        fs.appendFileSync(this.logFile, message + '\n');
+      } catch (error) {
+        if (error.code !== 'EPIPE') {
+          this.enableFileLogging = false;
+        }
+      }
     }
   }
 
