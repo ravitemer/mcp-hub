@@ -94,41 +94,8 @@ async function run() {
       shutdownDelay: argv["shutdown-delay"],
     });
   } catch (error) {
-    if (isMCPHubError(error)) {
-      // Our errors are already structured, just pass them through
-      logger.error(error.code, error.message, error.data, true, 1);
-    } else if (error.code === "EADDRINUSE") {
-      // System errors with known codes get special handling
-      logger.error(
-        "PORT_IN_USE",
-        `Failed to start server: Port ${argv.port} is already in use by another process`,
-        {
-          port: argv.port,
-          error: error.message,
-        },
-        true,
-        1
-      );
-    } else if (error.code === "ENOENT") {
-      logger.error(
-        "CONFIG_NOT_FOUND",
-        `Failed to start server: Configuration file not found at path ${argv.config}`,
-        {
-          path: argv.config,
-          error: error.message,
-        },
-        true,
-        1
-      );
-    } else {
-      // For any other error, kill the process
-      process.kill(process.pid, "SIGINT");
-    }
+    process.exit(1)
   }
 }
 
-run().catch((error) => {
-  // This catch block handles errors from the run() function itself
-  // that weren't caught by the try/catch inside run()
-  process.kill(process.pid, "SIGINT");
-});
+run()

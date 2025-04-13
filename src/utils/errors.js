@@ -103,7 +103,7 @@ export function wrapError(error, code = "UNEXPECTED_ERROR", data = {}) {
     return error;
   }
 
-  return new MCPHubError(code, error.message, {
+  return new MCPHubError(error.code || code, error.message, {
     ...data,
     originalError: error,
   });

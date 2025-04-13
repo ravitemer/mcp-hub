@@ -270,10 +270,9 @@ export class ConfigManager extends EventEmitter {
             try {
               const { config, changes } = await this.loadConfig();
 
+              this.emit("configChanged", { config, changes });
               // Only emit if there are actual changes to prevent unnecessary updates
-              if (changes.added.length > 0 || changes.removed.length > 0 || changes.modified.length > 0) {
-                this.emit("configChanged", config, changes);
-              } else {
+              if (changes.added.length == 0 && changes.removed.length == 0 && changes.modified.length == 0) {
                 logger.debug("No significant changes detected");
               }
             } catch (error) {

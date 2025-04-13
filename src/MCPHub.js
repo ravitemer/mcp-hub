@@ -23,8 +23,8 @@ export class MCPHub extends EventEmitter {
 
       if (this.shouldWatchConfig && !isRestarting) {
         this.configManager.watchConfig();
-        this.configManager.on("configChanged", async (newConfig, changes) => {
-          await this.handleConfigUpdated(newConfig, changes);
+        this.configManager.on("configChanged", async ({ config, changes }) => {
+          await this.handleConfigUpdated(config, changes);
         });
       }
 
@@ -163,14 +163,16 @@ export class MCPHub extends EventEmitter {
 
   async handleConfigUpdated(newConfig, changes) {
     try {
-      if (changes.added.length === 0 && changes.removed.length === 0 && changes.modified.length === 0) {
+      const isSignificant = changes.added.length > 0 || changes.removed.length > 0 || changes.modified.length > 0;
+      this.emit("configChangeDetected", { newConfig, isSignificant })
+      if (!isSignificant) {
         // logger.info("No significant config changes detected", {
         //   message: "Configuration change involved only non-critical fields, no server updates needed",
         //   unchangedServers: changes.unchanged.length
         // });
         return;
       }
-      this.emit("configChangeDetected", changes);
+      this.emit("importantConfigChanged", changes);
       // Handle new servers
       for (const name of changes.added) {
         const serverConfig = newConfig.mcpServers[name];
@@ -226,7 +228,7 @@ export class MCPHub extends EventEmitter {
         false
       )
     } finally {
-      this.emit("configChangeHandled")
+      this.emit("importantConfigChangeHandled", changes);
     }
   }
 
@@ -363,7 +365,7 @@ export class MCPHub extends EventEmitter {
   }
 
   async refreshAllServers() {
-    logger.info("Refreshing capabilities for all servers");
+    logger.debug("Refreshing capabilities from all servers");
     const serverNames = Array.from(this.connections.keys());
 
     const results = await Promise.allSettled(
@@ -390,6 +392,7 @@ export class MCPHub extends EventEmitter {
         }
       })
     );
+    logger.debug("Refresed all servers")
 
     return results.map((result) =>
       result.status === "fulfilled" ? result.value : result.reason
