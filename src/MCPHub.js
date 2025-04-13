@@ -216,7 +216,7 @@ export class MCPHub extends EventEmitter {
         await this.connectServer(name, serverConfig);
         logger.info(`Updated server '${name}'`)
       }
-
+      this.emit("importantConfigChangeHandled", changes);
     } catch (error) {
       logger.error(
         error.code || "CONFIG_UPDATE_ERROR",
@@ -227,8 +227,6 @@ export class MCPHub extends EventEmitter {
         },
         false
       )
-    } finally {
-      this.emit("importantConfigChangeHandled", changes);
     }
   }
 
