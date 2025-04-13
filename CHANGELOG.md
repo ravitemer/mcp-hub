@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.1] - 2025-04-13
+
+### Fixed
+- Improved file watching reliability across different editors
+- Fixed issue with Neovim file watching not triggering after first change
+- Enhanced cleanup of file watchers during shutdown
+- Added proper resource cleanup for file watchers
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
