@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2025-04-13
+
+### Breaking Changes
+- Removed client registration/unregistration API endpoints
+- All clients now connect directly via SSE at /api/events
+- Simplified client connection management to SSE-only model
+
+### Added
+- Enhanced SSE client connection tracking
+- Improved client event notifications
+- More detailed connection metrics in health endpoint
+- Better documentation with updated architecture diagrams
+
+### Enhanced
+- Improved --watch to only update affected servers on config changes
+- Smarter config watching with better change detection
+
+### Changed
+- Logging system now writes to ~/.mcp-hub/logs/mcp-hub.log
+
 ## [2.2.0] - 2025-04-10
 
 ### Added

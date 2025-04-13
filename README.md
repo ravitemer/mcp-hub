@@ -1,34 +1,58 @@
-# MCP Hub
+# MCP Hub 
 
 [![npm version](https://badge.fury.io/js/mcp-hub.svg)](https://www.npmjs.com/package/mcp-hub)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-A centralized manager for Model Context Protocol (MCP) servers that provides:
+MCP Hub acts as a central coordinator between clients and multiple MCP servers, making it easy to utilize capabilities from multiple servers through a single interface.
 
-- Dynamic MCP server management and monitoring
-- REST API for tool execution and resource access
-- MCP Server marketplace (using Cline [marketplace](https://github.com/cline/mcp-marketplace))
-- Real-time server status tracking
-- Client connection management
-- Process lifecycle handling
+## Key Features
 
-## Overview
+- **Dynamic Server Management**:
+  - Start, stop, enable/disable servers on demand
+  - Real-time configuration updates with automatic server reconnection
+  - Support for both local (stdio) and remote (SSE) MCP servers 
+  - Health monitoring and automatic recovery
 
-### Hub Server vs MCP Servers
+- **Unified REST API**:
+  - Execute tools from any connected server
+  - Access resources and resource templates
+  - Real-time status updates via Server-Sent Events (SSE)
+  - Full CRUD operations for server management
 
-- **Hub Server (MCP Hub)**
+- **Real-time Events & Monitoring**:
+  - Live server status and capability updates
+  - Client connection tracking
+  - Tool and resource list change notifications
+  - Structured JSON logging with file output
 
-  - Central management server that connects to and manages multiple MCP servers
-  - Provides unified API endpoints for clients to access MCP server capabilities
-  - Handles server lifecycle, health monitoring, and client connections
-  - Routes requests between clients and appropriate MCP servers
+- **Client Connection Management**:
+  - Simple SSE-based client connections via /api/events
+  - Automatic connection cleanup on disconnect
+  - Optional auto-shutdown when no clients connected
+  - Real-time connection state monitoring
 
-- **MCP Servers**
-  - Individual servers that provide specific tools and resources
-  - Each server has its own capabilities (tools, resources, templates)
-  - Connected to and managed by the Hub server
-  - Process requests from clients through the Hub
+- **Process Lifecycle Management**:
+  - Graceful startup and shutdown handling
+  - Proper cleanup of server connections
+  - Error recovery and reconnection
+
+### Components
+
+#### Hub Server
+The main management server that:
+- Maintains connections to multiple MCP servers
+- Provides unified API access to server capabilities
+- Handles server lifecycle and health monitoring
+- Manages SSE client connections and events
+- Processes configuration updates and server reconnection
+
+#### MCP Servers
+Individual servers that:
+- Provide specific tools and resources
+- Can be local processes (STDIO) or remote endpoints (SSE)
+- Have their own set of capabilities (tools, resources, templates)
+- Are dynamically managed by the hub
 
 ## Installation
 
@@ -47,27 +71,68 @@ mcp-hub --port 3000 --config path/to/config.json
 ### CLI Options
 ```bash
 Options:
-  --port            Port to run the server on (default: 3000)
+  --port            Port to run the server on (required)
   --config          Path to config file (required)
-  --watch           Watch config file for changes (default: false)
+  --watch           Watch config file for changes, only updates affected servers (default: false)
   --auto-shutdown   Whether to automatically shutdown when no clients are connected (default: false)
   --shutdown-delay  Delay in milliseconds before shutting down when auto-shutdown is enabled (default: 0)
   -h, --help       Show help information
 ```
 
-The server outputs JSON-formatted status messages on startup and state changes:
+## Configuration
+
+MCP Hub uses a JSON configuration file to define managed servers:
 
 ```json
 {
-  "status": "ready",
-  "server_id": "mcp-hub",
-  "version": "1.0.0",
-  "port": 3000,
-  "pid": 12345,
-  "servers": [],
-  "timestamp": "2024-02-20T05:55:00.000Z"
+  "mcpServers": {
+    "stdio-server": {
+      "command": "npx",
+        "args": ["example-server"],
+        "env": {
+          "API_KEY": "", // Will use process.env.API_KEY
+          "DEBUG": "true", // Will use this value
+          "SECRET_TOKEN": null // Will use process.env.SECRET_TOKEN
+        },
+        "disabled": false
+    },
+      "sse-server": {
+        "url": "https://api.example.com/mcp",
+        "headers": {
+          "Authorization": "Bearer token",
+          "Content-Type": "application/json"
+        },
+        "disabled": false
+      }
+  }
 }
 ```
+
+### Configuration Options
+
+MCP Hub supports two types of servers: STDIO (local) and SSE (remote). The server type is automatically determined based on the configuration fields provided.
+
+#### STDIO Server Options
+
+- **command**: Command to start the local MCP server
+- **args**: Array of command line arguments
+- **env**: Environment variables for the server. If a variable is specified with a falsy value (empty string, null, undefined), it will fall back to using the corresponding system environment variable if available.
+- **disabled**: Whether the server is disabled (default: false)
+
+#### SSE Server Options
+
+- **url**: The URL of the remote SSE server endpoint
+- **headers**: Optional HTTP headers for the SSE connection (e.g., for authentication)
+- **disabled**: Whether the server is disabled (default: false)
+
+##### Server Type Detection
+
+The server type (STDIO or SSE) is automatically determined based on the presence of specific fields:
+- If `command` is present → STDIO server
+- If `url` is present → SSE server
+
+Note: A server configuration cannot mix STDIO and SSE fields - it must be one type or the other.
+
 
 ## Nix
 
@@ -121,60 +186,6 @@ the mcp-hub nix store path to the `cmd` command in the plugin config like
 }
 ```
 
-## Configuration
-
-MCP Hub uses a JSON configuration file to define managed servers:
-
-```json
-{
-  "mcpServers": {
-    "stdio-server": {
-      "command": "npx",
-      "args": ["example-server"],
-      "env": {
-        "API_KEY": "", // Will use process.env.API_KEY
-        "DEBUG": "true", // Will use this value
-        "SECRET_TOKEN": null // Will use process.env.SECRET_TOKEN
-      },
-      "disabled": false
-    },
-    "sse-server": {
-      "url": "https://api.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer token",
-        "Content-Type": "application/json"
-      },
-      "disabled": false
-    }
-  }
-}
-```
-
-### Configuration Options
-
-MCP Hub supports two types of servers: STDIO (local) and SSE (remote). The server type is automatically determined based on the configuration fields provided.
-
-#### STDIO Server Options
-
-- **command**: Command to start the local MCP server
-- **args**: Array of command line arguments
-- **env**: Environment variables for the server. If a variable is specified with a falsy value (empty string, null, undefined), it will fall back to using the corresponding system environment variable if available.
-- **disabled**: Whether the server is disabled (default: false)
-
-#### SSE Server Options
-
-- **url**: The URL of the remote SSE server endpoint
-- **headers**: Optional HTTP headers for the SSE connection (e.g., for authentication)
-- **disabled**: Whether the server is disabled (default: false)
-
-##### Server Type Detection
-
-The server type (STDIO or SSE) is automatically determined based on the presence of specific fields:
-- If `command` is present → STDIO server
-- If `url` is present → SSE server
-
-Note: A server configuration cannot mix STDIO and SSE fields - it must be one type or the other.
-
 ## Example Integrations
 
 ### Neovim Integration
@@ -186,31 +197,6 @@ The [ravitemer/mcphub.nvim](https://github.com/ravitemer/mcphub.nvim) plugin pro
 - Real-time status updates in Neovim
 - Auto install mcp servers with marketplace addition
 
-## Logging
-
-MCP Hub uses structured JSON logging for all events:
-
-```json
-{
-  "type": "error",
-  "code": "TOOL_ERROR",
-  "message": "Failed to execute tool",
-  "data": {
-    "server": "example-server",
-    "tool": "example-tool",
-    "error": "Invalid parameters"
-  },
-  "timestamp": "2024-02-20T05:55:00.000Z"
-}
-```
-
-Log levels include:
-
-- `info`: Normal operational messages
-- `warn`: Warning conditions
-- `debug`: Detailed debug information
-- `error`: Error conditions (includes error code and details)
-
 ## REST API
 
 ### Health and Status
@@ -221,16 +207,33 @@ Log levels include:
 GET /api/health
 ```
 
-Response:
+The health endpoint provides comprehensive status information including:
+- Current hub state (starting, ready, restarting, restarted, stopping, stopped, error)
+- Connected server statuses and capabilities
+- Active SSE connection details
+- Detailed connection metrics
+- Error state details if applicable
 
+Response:
 ```json
 {
   "status": "ok",
+  "state": "ready",
   "server_id": "mcp-hub",
-  "version": "1.0.0",
   "activeClients": 2,
   "timestamp": "2024-02-20T05:55:00.000Z",
-  "servers": []
+  "servers": [],
+  "connections": {
+    "totalConnections": 2,
+    "connections": [
+      {
+        "id": "client-uuid",
+        "state": "connected",
+        "connectedAt": "2024-02-20T05:50:00.000Z",
+        "lastEventAt": "2024-02-20T05:55:00.000Z"
+      }
+    ]
+  }
 }
 ```
 
@@ -353,26 +356,6 @@ Response:
     "uptime": 0
   },
   "timestamp": "2024-02-20T05:55:00.000Z"
-}
-```
-
-### Client Management
-
-#### Register Client
-
-```bash
-POST /api/client/register
-{
-  "clientId": "unique_client_id"
-}
-```
-
-#### Unregister Client
-
-```bash
-POST /api/client/unregister
-{
-  "clientId": "unique_client_id"
 }
 ```
 
@@ -522,66 +505,116 @@ Response:
 }
 ```
 
-## Real-time Updates
+## Real-time Events System
 
-The Hub Server provides real-time updates via Server-Sent Events (SSE) at `/api/events`. Connect to this endpoint to receive real-time updates about server status, client connections, and capability changes.
+MCP Hub implements a comprehensive real-time events system using Server-Sent Events (SSE) at `/api/events`. This endpoint provides live updates about server status, configuration changes, capability updates, and more.
+
+### Hub States
+
+The hub server transitions through several states during its lifecycle:
+
+| State | Description |
+|-------|-------------|
+| `starting` | Initial startup, loading configuration |
+| `ready` | Server is running and ready to handle requests |
+| `restarting` | Reloading configuration/reconnecting servers |
+| `restarted` | Configuration reload complete |
+| `stopping` | Graceful shutdown in progress |
+| `stopped` | Server has fully stopped |
+| `error` | Error state (includes error details) |
+
+You can monitor these states through the `/health` endpoint or SSE events.
 
 ### Event Types
 
-1. **server_info** - Initial connection information
+MCP Hub emits several types of events:
 
+#### Core Events
+
+1. **heartbeat** - Periodic connection health check
 ```json
 {
+  "connections": 2,
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+2. **hub_state** - Hub server state changes
+```json
+{
+  "state": "ready",
   "server_id": "mcp-hub",
   "version": "1.0.0",
-  "status": "connected",
   "pid": 12345,
   "port": 3000,
-  "activeClients": 1,
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
 
-2. **server_ready** - Server started and ready
-
+3. **log** - Server log messages
 ```json
 {
-  "status": "ready",
-  "server_id": "mcp-hub",
-  "version": "1.0.0",
-  "port": 3000,
-  "pid": 12345,
-  "servers": [],
+  "type": "info",
+  "message": "Server started",
+  "data": {},
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
 
-3. **client_registered/unregistered** - Client connection events
+#### Subscription Events
 
+1. **config_changed** - Configuration file changes detected
 ```json
 {
-  "activeClients": 2,
-  "clientId": "client_123",
+  "type": "config_changed",
+  "newConfig": {},
+  "isSignificant": true,
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
 
-4. **tool_list_changed** - Server's tools list has changed
-
+2. **servers_updating** - Server updates in progress
 ```json
 {
-  "type": "TOOL",
+  "type": "servers_updating",
+  "changes": {
+    "added": ["server1"],
+    "removed": [],
+    "modified": ["server2"],
+    "unchanged": ["server3"]
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+3. **servers_updated** - Server updates completed
+```json
+{
+  "type": "servers_updated",
+  "changes": {
+    "added": ["server1"],
+    "removed": [],
+    "modified": ["server2"],
+    "unchanged": ["server3"]
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+4. **tool_list_changed** - Server's tools list updated
+```json
+{
+  "type": "tool_list_changed",
   "server": "example-server",
   "tools": ["tool1", "tool2"],
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
 
-5. **resource_list_changed** - Server's resources list has changed
-
+5. **resource_list_changed** - Server's resources/templates updated
 ```json
 {
-  "type": "RESOURCE",
+  "type": "resource_list_changed",
   "server": "example-server",
   "resources": ["resource1", "resource2"],
   "resourceTemplates": [],
@@ -589,16 +622,49 @@ The Hub Server provides real-time updates via Server-Sent Events (SSE) at `/api/
 }
 ```
 
-6. **prompt_list_changed** - Server's prompts list has changed
-
+6. **prompt_list_changed** - Server's prompts list updated
 ```json
 {
-  "type": "PROMPT",
+  "type": "prompt_list_changed",
   "server": "example-server",
   "prompts": ["prompt1", "prompt2"],
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
+### Connection Management
+
+- Each SSE connection is assigned a unique ID
+- Connections are automatically cleaned up on client disconnect
+- Connection statistics available via `/health` endpoint
+- Optional auto-shutdown when no clients are connected
+
+## Logging
+
+MCP Hub uses structured JSON logging for all events. Logs are written to both console and file at `~/.mcp-hub/logs/mcp-hub.log`:
+
+```json
+{
+  "type": "error",
+    "code": "TOOL_ERROR",
+    "message": "Failed to execute tool",
+    "data": {
+      "server": "example-server",
+      "tool": "example-tool",
+      "error": "Invalid parameters"
+    },
+    "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+Log levels include:
+
+- `info`: Normal operational messages
+- `warn`: Warning conditions
+- `debug`: Detailed debug information (includes configuration changes)
+- `error`: Error conditions (includes error code and stack trace)
+
+Logs are rotated daily and kept for 30 days by default.
+
 
 ## Error Handling
 
@@ -634,84 +700,69 @@ Example error structure:
 }
 ```
 
-### Error Categories
-
-1. **Configuration Errors**
-
-   - Invalid config format
-   - Missing required fields
-   - Environment variable issues
-
-2. **Server Management Errors**
-
-   - Connection failures
-   - Lost connections
-   - Capability fetch issues
-   - Server startup problems
-
-3. **Request Processing Errors**
-
-   - Invalid parameters
-   - Server availability
-   - Tool execution failures
-   - Resource access issues
-
-4. **Client Management Errors**
-   - Registration failures
-   - Duplicate registrations
-   - Invalid client IDs
-
 ## Architecture
 
 ### Hub Server Lifecycle
 
 ```mermaid
 sequenceDiagram
+    participant C as Client
     participant H as Hub Server
     participant M1 as MCP Server 1
     participant M2 as MCP Server 2
-    participant C as Client
 
-    Note over H: Server Start
+    Note over H: Server Start (state: starting)
     activate H
+    
+    Note over H: Config Loading
+    H->>H: Load & Validate Config
+    H->>H: Watch Config File
+    H->>H: Initialize SSE Manager
+    
+    Note over H: Server Connections (state: ready)
     H->>+M1: Connect
     M1-->>-H: Connected + Capabilities
     H->>+M2: Connect
     M2-->>-H: Connected + Capabilities
+    H-->>C: hub_state (ready)
 
-    Note over C,H: Client Interactions
-    C->>H: Register Client
-    H-->>C: Servers List & Capabilities
+    Note over C,H: Client Setup
+    C->>H: Connect to /api/events (SSE)
+    H-->>C: connection_opened
     
-    C->>H: Call Tool (M1)
+    Note over C,H: Client Operations
+    C->>H: Execute Tool (HTTP)
     H->>M1: Execute Tool
     M1-->>H: Tool Result
-    H-->>C: Response
+    H-->>C: HTTP Response
+    
+    Note over H,C: Real-time Updates
+    H->>H: Detect Config Change
+    H-->>C: servers_updating (SSE)
+    H->>M1: Reconnect with New Config
+    M1-->>H: Updated Capabilities
+    H-->>C: servers_updated (SSE)
 
-    C->>H: Access Resource (M2)
-    H->>M2: Get Resource
-    M2-->>H: Resource Data
-    H-->>C: Response
-
-    Note over H: Server Management
-    H->>H: Monitor Server Health
-    H->>H: Track Server Status
-    H->>H: Update Capabilities
-
+    Note over H,C: Server Events
+    M2->>H: Tool List Changed
+    H-->>C: tool_list_changed (SSE)
+    
     Note over H: Shutdown Process
-    C->>H: Unregister
+    Note over C,H: Client Disconnects
+    H-->>C: hub_state (stopping) (SSE)
     H->>M1: Disconnect
     H->>M2: Disconnect
+    H-->>C: hub_state (stopped) (SSE)
     deactivate H
 ```
 
 The Hub Server coordinates communication between clients and MCP servers:
 
 1. Starts and connects to configured MCP servers
-2. Manages client registrations
-3. Routes tool execution and resource requests
-4. Handles server monitoring and health checks
-5. Performs clean shutdown of all connections
+2. Handles SSE client connections and events
+3. Routes tool and resource requests to appropriate servers
+4. Monitors server health and maintains capabilities
+5. Manages graceful startup/shutdown processes
 
 ### MCP Server Management
 
@@ -765,36 +816,65 @@ sequenceDiagram
     participant H as Hub Server
     participant M as MCP Server
     
-    Note over C,H: Tool Execution Flow
-    C->>H: POST /api/servers/{name}/tools
-    H->>H: Validate Request
-    H->>H: Check Server Status
+    Note over C,H: Tool Execution
+    C->>H: POST /api/servers/tools (HTTP)
+    H->>H: Validate Request & Server
     
     alt Server Not Connected
-        H-->>C: Error: Server Unavailable
+        H-->>C: 503 Server Unavailable (HTTP)
     else Server Connected
         H->>M: Execute Tool
         
-        alt Tool Success
+        alt Success
             M-->>H: Tool Result
-            H-->>C: Success Response
-        else Tool Error
+            H-->>C: Result Response (HTTP)
+        else Error
             M-->>H: Error Details
-            H-->>C: Error Response
+            H-->>C: Error Response (HTTP)
+            H-->>C: log (SSE Event)
         end
     end
     
-    Note over C,H: Resource Access Flow
-    C->>H: POST /api/servers/{name}/resources
-    H->>H: Validate URI
-    H->>H: Check Server Status
+    Note over C,H: Resource Access
+    C->>H: POST /api/servers/resources (HTTP)
+    H->>H: Validate URI & Template
     
-    alt Valid Resource
+    alt Invalid Resource
+        H-->>C: 404 Not Found (HTTP)
+    else Server Not Connected
+        H-->>C: 503 Unavailable (HTTP)
+    else Valid Request
         H->>M: Request Resource
-        M-->>H: Resource Data
-        H-->>C: Resource Content
-    else Invalid Resource
-        H-->>C: 404 Not Found
+        
+        alt Success
+            M-->>H: Resource Data
+            H-->>C: Resource Content (HTTP)
+        else Error
+            M-->>H: Error Details
+            H-->>C: Error Response (HTTP)
+            H-->>C: log (SSE Event)
+        end
+    end
+    
+    Note over C,H: Prompt Execution
+    C->>H: POST /api/servers/prompts (HTTP)
+    H->>H: Validate Prompt & Args
+    
+    alt Invalid Prompt
+        H-->>C: 404 Not Found (HTTP)
+    else Server Not Connected
+        H-->>C: 503 Unavailable (HTTP)
+    else Valid Request
+        H->>M: Execute Prompt
+        
+        alt Success
+            M-->>H: Messages Array
+            H-->>C: Messages Response (HTTP)
+        else Error
+            M-->>H: Error Details
+            H-->>C: Error Response (HTTP)
+            H-->>C: log (SSE Event)
+        end
     end
 ```
 
