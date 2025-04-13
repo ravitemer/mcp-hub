@@ -1,5 +1,5 @@
 import fs from "fs/promises";
-import { watch } from "fs";
+import chokidar from "chokidar";
 import { EventEmitter } from "events";
 import logger from "./logger.js";
 import { ConfigError, wrapError } from "./errors.js";
@@ -8,8 +8,7 @@ export class ConfigManager extends EventEmitter {
   // Key fields to compare for server config changes
   #KEY_FIELDS = ['command', 'args', 'env', 'disabled', 'url', 'headers'];
   #previousConfig = null;
-  #debounceTimer = null;
-  #DEBOUNCE_DELAY = 200;
+  #watcher = null;
 
   constructor(configPathOrObject) {
     super();
@@ -247,89 +246,95 @@ export class ConfigManager extends EventEmitter {
     }
   }
 
+  /**
+   * Watch the config file for changes using chokidar
+   * This provides reliable file watching across different editors and platforms
+   */
   watchConfig() {
-    if (this.watcher) {
+    if (this.#watcher) {
       return;
     }
 
     try {
-      this.watcher = watch(this.configPath, async (eventType) => {
-        if (eventType === "change") {
-          // Clear any existing timer
-          if (this.#debounceTimer) {
-            clearTimeout(this.#debounceTimer);
-          }
+      // Initialize chokidar watcher with optimal settings
+      this.#watcher = chokidar.watch(this.configPath, {
+        // Wait for writes to fully complete before triggering
+        awaitWriteFinish: {
+          stabilityThreshold: 200, // Wait 200ms after last write
+          pollInterval: 100       // Check every 100ms
+        },
+        persistent: true,         // Keep watching
+        usePolling: false,        // Use native events when possible
+        ignoreInitial: true      // Don't trigger on initial file load
+      });
 
-          // Set new timer
-          this.#debounceTimer = setTimeout(async () => {
-            logger.debug(`Processing debounced config change`, {
-              path: this.configPath,
-              delay: this.#DEBOUNCE_DELAY
-            });
-
-            try {
-              const { config, changes } = await this.loadConfig();
-
-              this.emit("configChanged", { config, changes });
-              // Only emit if there are actual changes to prevent unnecessary updates
-              if (changes.added.length == 0 && changes.removed.length == 0 && changes.modified.length == 0) {
-                logger.debug("No significant changes detected");
-              }
-            } catch (error) {
-              // Don't throw here as this is an async event handler
-              logger.error(
-                "CONFIG_RELOAD_ERROR",
-                `Error reloading config after change: ${error.message}`,
-                error instanceof ConfigError
-                  ? error.data
-                  : { error: error.message },
-                false
-              );
-            } finally {
-              this.#debounceTimer = null;
-            }
-          }, this.#DEBOUNCE_DELAY);
-
-          logger.debug(`Debouncing config change`, {
-            path: this.configPath,
-            delay: this.#DEBOUNCE_DELAY
+      // Handle file changes
+      this.#watcher.on('change', async () => {
+        try {
+          logger.debug('Config file change detected', {
+            path: this.configPath
           });
+
+          // Load and parse updated config
+          const { config, changes } = await this.loadConfig();
+
+          // Emit change event with changes
+          this.emit('configChanged', { config, changes });
+
+          // Log change summary
+          if (changes.added.length === 0 &&
+            changes.removed.length === 0 &&
+            changes.modified.length === 0) {
+            logger.debug('No significant config changes detected');
+          } else {
+            logger.info('Config changes processed', {
+              added: changes.added.length,
+              removed: changes.removed.length,
+              modified: changes.modified.length
+            });
+          }
+        } catch (error) {
+          logger.error(
+            'CONFIG_RELOAD_ERROR',
+            'Error reloading config after change',
+            error instanceof ConfigError
+              ? error.data
+              : { error: error.message },
+            false
+          );
         }
       });
 
       // Handle watcher errors
-      this.watcher.on("error", (error) => {
+      this.#watcher.on('error', (error) => {
         logger.error(
-          "CONFIG_WATCH_ERROR",
-          "Config watcher error",
+          'CONFIG_WATCH_ERROR',
+          'Config watcher error',
           { error: error.message },
           false
         );
       });
 
-      logger.info(`Started watching config file at ${this.configPath}`, {
-        path: this.configPath,
+      logger.info(`Started watching config file with chokidar at ${this.configPath}`, {
+        path: this.configPath
       });
     } catch (error) {
-      throw new ConfigError("Failed to start config watcher", {
+      throw new ConfigError('Failed to start config watcher', {
         path: this.configPath,
-        error: error.message,
+        error: error.message
       });
     }
   }
+  /**
+   * Stop watching the config file
+   * Closes the chokidar watcher instance
+   */
   stopWatching() {
-    if (this.watcher) {
-      this.watcher.close();
-      this.watcher = null;
-
-      // Clear any pending debounce timer
-      if (this.#debounceTimer) {
-        clearTimeout(this.#debounceTimer);
-        this.#debounceTimer = null;
-      }
-
+    if (this.#watcher) {
+      this.#watcher.close();
+      this.#watcher = null;
       logger.info(`Stopped watching config file at ${this.configPath}`, {
-        path: this.configPath,
+        path: this.configPath
       });
     }
   }

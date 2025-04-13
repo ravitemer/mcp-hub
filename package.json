@@ -41,6 +41,7 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.4.1",
     "@vitest/coverage-v8": "^3.0.8",
+    "chokidar": "^4.0.3",
     "esbuild": "^0.25.1",
     "express": "^4.21.2",
     "fast-deep-equal": "^3.1.3",

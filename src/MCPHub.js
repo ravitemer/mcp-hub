@@ -173,7 +173,7 @@ export class MCPHub extends EventEmitter {
         return;
       }
       this.emit("importantConfigChanged", changes);
-      // Handle new servers
+      // Handle new server  s
       for (const name of changes.added) {
         const serverConfig = newConfig.mcpServers[name];
         await this.connectServer(name, serverConfig);
@@ -258,6 +258,21 @@ export class MCPHub extends EventEmitter {
       }
       // Don't remove from connections map
     }
+  }
+
+  async cleanup() {
+    logger.info("Starting MCP Hub cleanup");
+
+    // Stop config file watching
+    if (this.shouldWatchConfig) {
+      logger.debug("Stopping config file watcher");
+      this.configManager.stopWatching();
+    }
+
+    // Disconnect all servers
+    await this.disconnectAll();
+
+    logger.info("MCP Hub cleanup completed");
   }
 
   async disconnectAll() {

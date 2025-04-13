@@ -202,12 +202,10 @@ class ServiceManager {
       return;
     }
 
-    logger.info("Stopping MCP Hub and disconnecting all servers");
+    logger.info("Stopping MCP Hub and cleaning up resources");
     try {
-      await this.mcpHub.disconnectAll();
-      logger.info(
-        "MCP Hub has been successfully stopped and all servers disconnected"
-      );
+      await this.mcpHub.cleanup();
+      logger.info("MCP Hub has been successfully stopped and cleaned up");
       this.mcpHub = null;
     } catch (error) {
       logger.error(
