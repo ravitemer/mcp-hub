@@ -78,7 +78,7 @@ class ServiceManager {
     this.sseManager.broadcast(EventTypes.HUB_STATE, this.getState(extraData));
   }
 
-  broadcastSubscriptionEvent(eventType, data) {
+  broadcastSubscriptionEvent(eventType, data = {}) {
     this.sseManager.broadcast(EventTypes.SUBSCRIPTION_EVENT, {
       type: eventType,
       ...data
@@ -344,8 +344,11 @@ registerRoute(
         throw new ValidationError("Missing server name", { field: "server_name" });
       }
       const status = await serviceManager.mcpHub.startServer(server_name);
-      // Send updated hub state
-      serviceManager.broadcastHubState();
+      serviceManager.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, {
+        changes: {
+          modified: [server_name],
+        }
+      })
       res.json({
         status: "ok",
         server: status,
@@ -373,9 +376,11 @@ registerRoute(
         server_name,
         disable === "true"
       );
-      // Send updated hub state
-      serviceManager.broadcastHubState();
-
+      serviceManager.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, {
+        changes: {
+          modified: [server_name],
+        }
+      })
       res.json({
         status: "ok",
         server: status,
