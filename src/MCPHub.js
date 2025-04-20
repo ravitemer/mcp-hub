@@ -136,7 +136,7 @@ export class MCPHub extends EventEmitter {
       serverConfig.disabled = false;
       await this.configManager.updateConfig(config);
     }
-
+    connection.config = serverConfig
     return await connection.start();
   }
 
@@ -173,33 +173,21 @@ export class MCPHub extends EventEmitter {
         return;
       }
       this.emit("importantConfigChanged", changes);
-      // Handle new server  s
-      for (const name of changes.added) {
+      const addPromises = changes.added.map(async (name) => {
         const serverConfig = newConfig.mcpServers[name];
         await this.connectServer(name, serverConfig);
-        logger.info(`Added new server '${name}'`, {
-          server: name,
-          status: "added",
-          message: `New server '${name}' has been added and connected`
-        });
-      }
-      // Handle removed servers first
-      for (const name of changes.removed) {
+        logger.info(`Added new server '${name}'`)
+      })
+
+      const removePromises = changes.removed.map(async (name) => {
         await this.disconnectServer(name);
         this.connections.delete(name); // Clean up the connection
-        logger.info(`Removed server '${name}'`, {
-          server: name,
-          status: "removed",
-          message: `Server '${name}' has been removed from configuration`
-        });
-      }
+        logger.info(`Removed server ${name}`)
+      })
 
-      // Handle modified servers
-      for (const name of changes.modified) {
+      const modifiedPromises = changes.modified.map(async (name) => {
         const serverConfig = newConfig.mcpServers[name];
         const connection = this.connections.get(name);
-
-        // If disabled state changed
         if (serverConfig.disabled !== connection?.disabled) {
           if (serverConfig.disabled) {
             await this.stopServer(name, true);
@@ -208,14 +196,18 @@ export class MCPHub extends EventEmitter {
             await this.startServer(name);
             logger.info(`Server '${name}' enabled`)
           }
-          continue;
+        } else {
+          // For other changes, reconnect with new config
+          await this.disconnectServer(name);
+          await this.connectServer(name, serverConfig);
+          logger.info(`Updated server '${name}'`)
         }
-
-        // For other changes, reconnect with new config
-        await this.disconnectServer(name);
-        await this.connectServer(name, serverConfig);
-        logger.info(`Updated server '${name}'`)
-      }
+      })
+      await Promise.allSettled([
+        ...addPromises,
+        ...removePromises,
+        ...modifiedPromises,
+      ])
       this.emit("importantConfigChangeHandled", changes);
     } catch (error) {
       logger.error(
@@ -227,6 +219,7 @@ export class MCPHub extends EventEmitter {
         },
         false
       )
+      this.emit("importantConfigChangeHandled", changes);
     }
   }
 
