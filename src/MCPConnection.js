@@ -125,15 +125,6 @@ export class MCPConnection extends EventEmitter {
         }
       );
 
-      const env = this.config.env || {};
-
-      // For each key in env, use process.env as fallback if value is falsy
-      // This means empty string, null, undefined etc. will fall back to process.env value
-      // Example: { API_KEY: "" } or { API_KEY: null } will use process.env.API_KEY
-      Object.keys(env).forEach((key) => {
-        env[key] = env[key] ? env[key] : process.env[key];
-      });
-
       // Create appropriate transport based on transport type
       if (this.transportType === 'sse') {
         // SSE transport setup with reconnection support
@@ -163,18 +154,34 @@ export class MCPConnection extends EventEmitter {
           };
         }
       } else {
+        const env = this.config.env || {};
+        // For each key in env, use process.env as fallback if value is falsy
+        // This means empty string, null, undefined etc. will fall back to process.env value
+        // Example: { API_KEY: "" } or { API_KEY: null } will use process.env.API_KEY
+        Object.keys(env).forEach((key) => {
+          env[key] = env[key] ? env[key] : process.env[key];
+        });
+        const serverEnv = {
+          //INFO: getDefaultEnvironment is imp in order to start mcp servers properly
+          ...getDefaultEnvironment(),
+          ...(process.env.MCP_ENV_VARS
+            ? JSON.parse(process.env.MCP_ENV_VARS)
+            : {}),
+          ...env,
+        }
+
         // Default to STDIO transport
         this.transport = new StdioClientTransport({
           command: this.config.command,
-          args: this.config.args || [],
-          env: {
-            //INFO: getDefaultEnvironment is imp in order to start mcp servers properly
-            ...getDefaultEnvironment(),
-            ...(process.env.MCP_ENV_VARS
-              ? JSON.parse(process.env.MCP_ENV_VARS)
-              : {}),
-            ...env,
-          },
+          args: (this.config.args || []).map(arg => {
+            //if arg starts with $ then replace it with the value from env
+            if (arg.startsWith("$")) {
+              const envKey = arg.substring(1);
+              return serverEnv[envKey] || arg;
+            }
+            return arg;
+          }),
+          env: serverEnv,
           stderr: "pipe",
         });
       }
