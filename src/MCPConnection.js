@@ -4,6 +4,7 @@ import {
   getDefaultEnvironment,
 } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import ReconnectingEventSource from "reconnecting-eventsource";
 import MCPHubOAuthProvider from "./utils/oauth-provider.js"
@@ -134,149 +135,42 @@ export class MCPConnection extends EventEmitter {
       this.status = ConnectionStatus.CONNECTING;
       this.lastStarted = new Date().toISOString();
 
-      this.client = new Client(
-        {
-          name: "mcp-hub",
-          version: "1.0.0",
-        },
-        {
-          capabilities: {},
-        }
-      );
-      // this.client.onerror = (error) => {
-      //   //this might trigger mostly with sse transport due to any interuptions
-      //   // logger.error("CLIENT_ERROR", `${this.name}: client error: ${error.message}`, {}, false);
-      //   logger.debug(`${this.name}: client error: ${error.message}`)
-      // };
-
-      // Create appropriate transport based on transport type
-      if (this.transportType === 'sse') {
-        this.authProvider = this.createOAuthProvider()
-
-        // SSE transport setup with reconnection support
-        const reconnectingEventSourceOptions = {
-          max_retry_time: 5000, // Maximum time between retries (5 seconds)
-          // withCredentials: this.config.headers?.["Authorization"] ? true : false,
-        };
-
-        //HACK: sending reconnectingEventSourceOptions in the SSEClientTransport needs us to create custom fetch function with headers created from authProvider tokens. This way we can use ReconnectingEventSource with necessary options
-        class ReconnectingES extends ReconnectingEventSource {
-          constructor(url, options) {
-            super(url, {
-              ...options || {},
-              ...reconnectingEventSourceOptions
-            })
+      try {
+        // Create appropriate transport based on transport type
+        if (this.transportType === 'stdio') {
+          this.transport = this._createStdioTransport();
+          this.client = this._createClient();
+          await this.client.connect(this.transport);
+        } else {
+          //First try the new http transport with fallback to deprecated sse transport
+          try {
+            this.authProvider = this._createOAuthProvider()
+            this.transport = this._createStreambleHTTPTransport(this.authProvider)
+            this.client = this._createClient();
+            await this.client.connect(this.transport);
+          } catch (httpError) {
+            //catches 401 error from http transport
+            if (this._isAuthError(httpError)) {
+              logger.debug(`'${this.name}' streamable-http transport needs authorization: ${httpError.message}`);
+              return this._handleUnauthorizedConnection()
+            } else {
+              logger.debug(`'${this.name}' streamable-http error: ${httpError.message}. Falling back to SSE transport`);
+              this.authProvider = this._createOAuthProvider()
+              this.transport = this._createSSETransport(this.authProvider);
+              this.client = this._createClient();
+              await this.client.connect(this.transport);
+            }
           }
         }
-        // Use ReconnectingEventSource for automatic reconnection
-        global.EventSource = ReconnectingES
-        this.transport = new SSEClientTransport(new URL(this.config.url), {
-          requestInit: {
-            headers: this.config.headers || {},
-          },
-          authProvider: this.authProvider,
-          // INFO:: giving eventSourceInit leading to infinite loop 
-          // eventSourceInit: reconnectingEventSourceOptions
-        });
-
-        // Log reconnection attempts
-        if (this.transport.eventSource) {
-          this.transport.eventSource.onretry = (_) => {
-            logger.info(`Attempting to reconnect to SSE server '${this.name}'`);
-          };
-        }
-      } else {
-        const env = this.config.env || {};
-        // For each key in env, use process.env as fallback if value is falsy
-        // This means empty string, null, undefined etc. will fall back to process.env value
-        // Example: { API_KEY: "" } or { API_KEY: null } will use process.env.API_KEY
-        Object.keys(env).forEach((key) => {
-          env[key] = env[key] ? env[key] : process.env[key];
-        });
-        const serverEnv = {
-          //INFO: getDefaultEnvironment is imp in order to start mcp servers properly
-          ...getDefaultEnvironment(),
-          ...(process.env.MCP_ENV_VARS
-            ? JSON.parse(process.env.MCP_ENV_VARS)
-            : {}),
-          ...env,
-        }
-
-        // Default to STDIO transport
-        this.transport = new StdioClientTransport({
-          command: this.config.command,
-          args: (this.config.args || []).map(arg => {
-            //if arg starts with $ then replace it with the value from env
-            if (arg.startsWith("$")) {
-              const envKey = arg.substring(1);
-              return serverEnv[envKey] || arg;
-            }
-            return arg;
-          }),
-          env: serverEnv,
-          stderr: "pipe",
-        });
-      }
-
-      // Handle transport errors with transport-specific details
-      this.transport.onerror = (error) => {
-        const connectionError = new ConnectionError(
-          `${this.name}: transport error: ${error.message}`,
-        );
-        logger.error(
-          connectionError.code,
-          connectionError.message,
-          connectionError.data,
-          false
-        );
-        this.error = error.message;
-        this.status = ConnectionStatus.DISCONNECTED;
-        this.startTime = null;
-
-        // Emit error event for handling at higher levels
-        this.emit("connectionError", connectionError);
-      };
-
-      this.transport.onclose = () => {
-        logger.info(`${this.transportType.toUpperCase()} transport connection closed for server '${this.name}'`);
-        this.status = ConnectionStatus.DISCONNECTED;
-        this.startTime = null;
-
-        // Emit close event for handling reconnection if needed
-        this.emit("connectionClosed", {
-          server: this.name,
-          type: this.transportType
-        });
-      };
-
-      // Set up stderr handling before connecting (STDIO only)
-      if (this.transportType !== 'sse') {
-        const stderrStream = this.transport.stderr;
-        if (stderrStream) {
-          stderrStream.on("data", (data) => {
-            const errorOutput = data.toString();
-            const error = new ConnectionError("Server error output", {
-              server: this.name,
-              error: errorOutput,
-            });
-            logger.error(error.code, error.message, error.data, false);
-            this.error = errorOutput;
-          });
-        }
-      }
-
-      try {
-        // Connect client (this will start the transport)
-        await this.client.connect(this.transport);
       } catch (error) {
-        // Handle 401 unauthorized responses
-        if (error.code === 401 || error instanceof UnauthorizedError) {
-          logger.warn(`Server '${this.name}' requires authorization`);
-          this.status = ConnectionStatus.UNAUTHORIZED;
-          this.authorizationUrl = this.authProvider.generatedAuthUrl;
-          return
+        //catches 401 error from sse transport
+        if (this._isAuthError(error)) {
+          logger.debug(`'${this.name}' SSE transport needs authorization: ${error.message}`);
+          return this._handleUnauthorizedConnection()
+        } else {
+          logger.debug(`'${this.name}' failed to start connection with http and sse transports: ${error.message}`);
+          throw error
         }
-        throw error;
       }
 
       // Fetch initial capabilities before marking as connected
@@ -306,12 +200,17 @@ export class MCPConnection extends EventEmitter {
   }
 
   removeNotificationHandlers() {
-    this.client.removeNotificationHandler(ToolListChangedNotificationSchema)
-    this.client.removeNotificationHandler(ResourceListChangedNotificationSchema)
-    this.client.removeNotificationHandler(PromptListChangedNotificationSchema)
-    this.client.removeNotificationHandler(LoggingMessageNotificationSchema)
+    // Remove all notification handlers
+    // For some reason removeNotificationHandlers doesn't seems to work 
+    // so we are setting them to nothing
+    const nothing = () => { };
+    this.client?.setNotificationHandler(ToolListChangedNotificationSchema, nothing)
+    this.client?.setNotificationHandler(ResourceListChangedNotificationSchema, nothing)
+    this.client?.setNotificationHandler(PromptListChangedNotificationSchema, nothing)
+    this.client?.setNotificationHandler(LoggingMessageNotificationSchema, nothing)
   }
   setupNotificationHandlers() {
+    if (!this.client) return
     // Handle tool list changes
     this.client.setNotificationHandler(
       ToolListChangedNotificationSchema,
@@ -602,22 +501,31 @@ export class MCPConnection extends EventEmitter {
     this.startTime = null;
     this.lastStarted = null;
     this.disabled = this.config.disabled || false;
+    this.authorizationUrl = null;
+    this.authProvider = null;
   }
 
   async disconnect(error) {
-    if (this.client) {
-      this.removeNotificationHandlers();
-      await this.client.close();
-    }
+    if (!this.client) return
+    this.removeNotificationHandlers();
     if (this.transport) {
+      // First try to terminate the session gracefully
+      if (this.transport.sessionId) {
+        try {
+          logger.debug(`'${this.name}': Terminating session before exit...`);
+          await transport.terminateSession();
+        }
+        catch (error) {
+          logger.debug(`'${this.name}': Error terminating session: ${error.message}`)
+        }
+      }
       await this.transport.close();
     }
-
     this.resetState(error);
   }
 
   // Create OAuth provider with proper metadata and storage
-  createOAuthProvider() {
+  _createOAuthProvider() {
     return new MCPHubOAuthProvider({
       serverName: this.name,
       serverUrl: this.config.url,
@@ -639,6 +547,13 @@ export class MCPConnection extends EventEmitter {
     return {
       authorizationUrl: this.authorizationUrl,
     }
+  }
+
+  async reconnect() {
+    if (this.client) {
+      await this.disconnect();
+    }
+    await this.connect();
   }
 
 
@@ -667,5 +582,137 @@ export class MCPConnection extends EventEmitter {
       lastStarted: this.lastStarted,
       authorizationUrl: this.authorizationUrl,
     };
+  }
+
+  _createStdioTransport() {
+    const env = this.config.env || {};
+    // For each key in env, use process.env as fallback if value is falsy
+    // This means empty string, null, undefined etc. will fall back to process.env value
+    // Example: { API_KEY: "" } or { API_KEY: null } will use process.env.API_KEY
+    Object.keys(env).forEach((key) => {
+      env[key] = env[key] ? env[key] : process.env[key];
+    });
+    const serverEnv = {
+      //INFO: getDefaultEnvironment is imp in order to start mcp servers properly
+      ...getDefaultEnvironment(),
+      ...(process.env.MCP_ENV_VARS
+        ? JSON.parse(process.env.MCP_ENV_VARS)
+        : {}),
+      ...env,
+    }
+
+    // Default to STDIO transport
+    const transport = new StdioClientTransport({
+      command: this.config.command,
+      args: (this.config.args || []).map(arg => {
+        //if arg starts with $ then replace it with the value from env
+        if (arg.startsWith("$")) {
+          const envKey = arg.substring(1);
+          return serverEnv[envKey] || arg;
+        }
+        return arg;
+      }),
+      env: serverEnv,
+      stderr: "pipe",
+    });
+    //listen to stderr for stdio servers
+    const stderrStream = transport.stderr;
+    if (stderrStream) {
+      stderrStream.on("data", (data) => {
+        const errorOutput = data.toString();
+        const error = new ConnectionError("Server error output", {
+          server: this.name,
+          error: errorOutput,
+        });
+        logger.error(error.code, error.message, error.data, false);
+        this.error = errorOutput;
+      });
+    }
+    return transport
+  }
+
+  _createStreambleHTTPTransport(authProvider) {
+    const options = {
+      authProvider,
+      requestInit: {
+        headers: this.config.headers || {},
+      },
+      // reconnectionOptions?: StreamableHTTPReconnectionOptions
+      // sessionId?: string;
+    }
+    const transport = new StreamableHTTPClientTransport(new URL(this.config.url), options);
+    return transport
+  }
+
+  _createSSETransport(authProvider) {
+    // SSE transport setup with reconnection support
+    const reconnectingEventSourceOptions = {
+      max_retry_time: 5000, // Maximum time between retries (5 seconds)
+      // withCredentials: this.config.headers?.["Authorization"] ? true : false,
+    };
+
+    //HACK: sending reconnectingEventSourceOptions in the SSEClientTransport needs us to create custom fetch function with headers created from authProvider tokens. This way we can use ReconnectingEventSource with necessary options
+    class ReconnectingES extends ReconnectingEventSource {
+      constructor(url, options) {
+        super(url, {
+          ...options || {},
+          ...reconnectingEventSourceOptions
+        })
+      }
+    }
+    // Use ReconnectingEventSource for automatic reconnection
+    global.EventSource = ReconnectingES
+    const transport = new SSEClientTransport(new URL(this.config.url), {
+      requestInit: {
+        headers: this.config.headers || {},
+      },
+      authProvider,
+      // INFO:: giving eventSourceInit leading to infinite loop, not needed anymore with global ReconnectingES
+      // eventSourceInit: reconnectingEventSourceOptions
+    });
+    return transport
+  }
+
+  _createClient() {
+    const client = new Client(
+      {
+        name: "mcp-hub",
+        version: "1.0.0",
+      },
+      {
+        capabilities: {},
+      }
+    );
+    client.onerror = (error) => {
+      // logger.error("CLIENT_ERROR", `${this.name}: client error: ${error.message}`, {}, false);
+      //INFO: onerror is being called for even minor errors, so debug seems more appropriate
+      logger.debug(`'${this.name}' error: ${error.message}`)
+    };
+
+    client.onclose = () => {
+      logger.debug(`'${this.name}' transport closed`)
+      this.status = [ConnectionStatus.DISCONNECTED, ConnectionStatus.DISABLED].includes(this.status) ? this.status : ConnectionStatus.DISCONNECTED;
+      this.startTime = null;
+      // Emit close event for handling reconnection if needed
+      this.emit("connectionClosed", {
+        server: this.name,
+        type: this.transportType
+      });
+    };
+    return client
+  }
+
+  _isAuthError(error) {
+    return error.code === 401 || error instanceof UnauthorizedError
+  }
+
+  _handleUnauthorizedConnection() {
+    logger.warn(`Server '${this.name}' requires authorization`);
+    this.status = ConnectionStatus.UNAUTHORIZED;
+    //our custom oauth provider stores auth url generated from redirecthandler rather than opening url  right away
+    this.authorizationUrl = this.authProvider.generatedAuthUrl;
+    if (!this.authorizationUrl) {
+      logger.warn(`No authorization URL available for server '${this.name}'`);
+    }
   }
 }

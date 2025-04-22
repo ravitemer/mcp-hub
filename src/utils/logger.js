@@ -97,7 +97,9 @@ class Logger {
     }
 
     if (exit) {
-      process.exit(exitCode);
+      //sigterm
+      process.emit('SIGTERM');
+      // process.exit(exitCode);
     }
   }
 
@@ -190,17 +192,16 @@ const logger = new Logger({
 process.on("uncaughtException", (error) => {
   logger.error(
     error.code || "UNHANDLED_ERROR",
-    "An unhandled error occurred",
+    `An unhandled error occurred: ${error}`,
     { message: error.message, stack: error.stack }
   );
 });
 
 // Handle unhandled promise rejections 
-process.on("unhandledRejection", (reason, promise) => {
+process.on("unhandledRejection", (error) => {
   logger.error(
     "UNHANDLED_REJECTION",
-    "An unhandled promise rejection occurred",
-    { reason, promise }
+    `An unhandled rejection occurred: ${error}`,
   );
 });
 
