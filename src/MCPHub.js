@@ -70,20 +70,11 @@ export class MCPHub extends EventEmitter {
           this.marketplace,
           this.hubServerUrl,
         );
-
-        // Forward events from connection
-        connection.on("toolsChanged", (data) =>
-          this.emit("toolsChanged", data)
-        );
-        connection.on("resourcesChanged", (data) =>
-          this.emit("resourcesChanged", data)
-        );
-        connection.on("promptsChanged", (data) =>
-          this.emit("promptsChanged", data)
-        );
-        connection.on("notification", (data) =>
-          this.emit("notification", data)
-        );
+        ["toolsChanged", "resourcesChanged", "promptsChanged", "notification"].forEach((event) => {
+          connection.on(event, (data) => {
+            this.emit(event, data);
+          });
+        });
 
         this.connections.set(name, connection);
         await connection.connect();
@@ -409,7 +400,7 @@ export class MCPHub extends EventEmitter {
         }
       })
     );
-    logger.debug("Refresed all servers")
+    logger.debug("Refreshed all servers")
 
     return results.map((result) =>
       result.status === "fulfilled" ? result.value : result.reason
