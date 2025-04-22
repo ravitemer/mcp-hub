@@ -105,6 +105,7 @@ export class MCPConnection extends EventEmitter {
     if (disable) {
       this.disabled = true;
       this.config.disabled = true;
+      this.status = ConnectionStatus.DISABLED;
     }
 
     // if (this.status !== "disconnected") {
@@ -201,7 +202,7 @@ export class MCPConnection extends EventEmitter {
 
   removeNotificationHandlers() {
     // Remove all notification handlers
-    // For some reason removeNotificationHandlers doesn't seems to work 
+    // For some reason removeNotificationHandlers doesn't seem to work 
     // so we are setting them to nothing
     const nothing = () => { };
     this.client?.setNotificationHandler(ToolListChangedNotificationSchema, nothing)
@@ -209,50 +210,9 @@ export class MCPConnection extends EventEmitter {
     this.client?.setNotificationHandler(PromptListChangedNotificationSchema, nothing)
     this.client?.setNotificationHandler(LoggingMessageNotificationSchema, nothing)
   }
+
   setupNotificationHandlers() {
     if (!this.client) return
-    // Handle tool list changes
-    this.client.setNotificationHandler(
-      ToolListChangedNotificationSchema,
-      async () => {
-        logger.debug(
-          `Received tools list changed notification from ${this.name}`
-        );
-        await this.updateCapabilities();
-        this.emit("toolsChanged", {
-          server: this.name,
-          tools: this.tools,
-        });
-      }
-    );
-
-    // Handle resource list changes
-    this.client.setNotificationHandler(
-      ResourceListChangedNotificationSchema,
-      async () => {
-        logger.debug(
-          `Received resources list changed notification from ${this.name}`
-        );
-        await this.updateCapabilities();
-        this.emit("resourcesChanged", {
-          server: this.name,
-          resources: this.resources,
-          resourceTemplates: this.resourceTemplates,
-        });
-      }
-    );
-    this.client.setNotificationHandler(
-      PromptListChangedNotificationSchema,
-      async () => {
-        logger.debug(
-          `Received prompts list changed notification from ${this.name}`
-        );
-        await this.updateCapabilities();
-        this.emit("promptsChanged", {
-          server: this.name,
-          prompts: this.prompts,
-        });
-      })
 
     // Handle general logging messages
     this.client.setNotificationHandler(
@@ -264,10 +224,32 @@ export class MCPConnection extends EventEmitter {
         logger.debug(`["${this.name}" server ${level} log]: ${JSON.stringify(data, null, 2)}`);
       }
     );
+    const map = {
+      "tools": ToolListChangedNotificationSchema,
+      "resources": ResourceListChangedNotificationSchema,
+      "prompts": PromptListChangedNotificationSchema,
+    }
+    // Handle tool list changes
+    Object.keys(map).forEach(type => {
+      this.client.setNotificationHandler(map[type], async () => {
+        logger.debug(`Received ${type}Changed notification`)
+        await this.updateCapabilities(type === "resources" ? ["resources", "resourceTemplates"] : [type]);
+        const updatedData = type === "resources" ? {
+          resources: this.resources,
+          resourceTemplates: this.resourceTemplates,
+        } : {
+          [type]: this[type],
+        }
+        this.emit(`${type}Changed`, {
+          server: this.name,
+          ...updatedData,
+        })
+      })
+    })
   }
 
 
-  async updateCapabilities() {
+  async updateCapabilities(capabilitiesToUpdate) {
     //skip for disabled servers
     if (!this.client) {
       return;
@@ -282,38 +264,38 @@ export class MCPConnection extends EventEmitter {
         return null;
       }
     };
+    const map = {
+      tools: {
+        method: "tools/list",
+        schema: ListToolsResultSchema,
+      },
+      resources: {
+        method: "resources/list",
+        schema: ListResourcesResultSchema,
+      },
+      resourceTemplates: {
+        method: "resources/templates/list",
+        schema: ListResourceTemplatesResultSchema,
+      },
+      prompts: {
+        method: "prompts/list",
+        schema: ListPromptsResultSchema,
+      }
+    }
 
     try {
-      // Fetch all capabilities before updating state
-      const [templatesResponse, toolsResponse, resourcesResponse, promptsResponse] =
-        await Promise.all([
-          safeRequest(
-            "resources/templates/list",
-            ListResourceTemplatesResultSchema
-          ),
-          safeRequest("tools/list", ListToolsResultSchema),
-          safeRequest("resources/list", ListResourcesResultSchema),
-          safeRequest("prompts/list", ListPromptsResultSchema),
-        ]);
-
-      // Update local state atomically, defaulting to empty arrays if capability not supported
+      const typesToFetch = capabilitiesToUpdate || Object.keys(map);
+      const fetchPromises = typesToFetch.map(async (type) => {
+        this[type] = (await safeRequest(map[type].method, map[type].schema))?.[type] || [];
+      });
+      await Promise.all(fetchPromises);
       //TODO: handle pagination
-      this.resourceTemplates = templatesResponse?.resourceTemplates || [];
-      this.tools = toolsResponse?.tools || [];
-      this.resources = resourcesResponse?.resources || [];
-      this.prompts = promptsResponse?.prompts || [];
     } catch (error) {
       // Only log as warning since missing capabilities are expected in some cases
       logger.warn(`Error updating capabilities for server '${this.name}'`, {
         server: this.name,
         error: error.message,
       });
-
-      // Reset capabilities to empty arrays
-      this.resourceTemplates = [];
-      this.tools = [];
-      this.resources = [];
-      this.prompts = [];
     }
   }
 
