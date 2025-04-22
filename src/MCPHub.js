@@ -10,9 +10,11 @@ import {
 import EventEmitter from "events";
 
 export class MCPHub extends EventEmitter {
-  constructor(configPathOrObject, { watch = false, marketplace } = {}) {
+  constructor(configPathOrObject, { port, watch = false, marketplace } = {}) {
     super();
     this.connections = new Map();
+    this.port = port;
+    this.hubServerUrl = `http://localhost:${port}`;
     this.configManager = new ConfigManager(configPathOrObject);
     this.shouldWatchConfig = watch && typeof configPathOrObject === "string";
     this.marketplace = marketplace;
@@ -65,7 +67,8 @@ export class MCPHub extends EventEmitter {
         const connection = new MCPConnection(
           name,
           serverConfig,
-          this.marketplace
+          this.marketplace,
+          this.hubServerUrl,
         );
 
         // Forward events from connection
@@ -161,15 +164,13 @@ export class MCPHub extends EventEmitter {
     return await connection.stop(disable);
   }
 
+
   async handleConfigUpdated(newConfig, changes) {
     try {
       const isSignificant = changes.added.length > 0 || changes.removed.length > 0 || changes.modified.length > 0;
       this.emit("configChangeDetected", { newConfig, isSignificant })
       if (!isSignificant) {
-        // logger.info("No significant config changes detected", {
-        //   message: "Configuration change involved only non-critical fields, no server updates needed",
-        //   unchangedServers: changes.unchanged.length
-        // });
+        logger.debug("No significant config changes detected")
         return;
       }
       this.emit("importantConfigChanged", changes);
@@ -208,7 +209,6 @@ export class MCPHub extends EventEmitter {
         ...removePromises,
         ...modifiedPromises,
       ])
-      this.emit("importantConfigChangeHandled", changes);
     } catch (error) {
       logger.error(
         error.code || "CONFIG_UPDATE_ERROR",
@@ -219,12 +219,13 @@ export class MCPHub extends EventEmitter {
         },
         false
       )
+    } finally {
       this.emit("importantConfigChangeHandled", changes);
     }
   }
 
   async connectServer(name, config) {
-    const connection = new MCPConnection(name, config, this.marketplace);
+    const connection = new MCPConnection(name, config, this.marketplace, this.hubServerUrl);
     this.connections.set(name, connection);
     await connection.connect();
     return connection.getServerInfo();
@@ -249,6 +250,16 @@ export class MCPHub extends EventEmitter {
       }
       // Don't remove from connections map
     }
+  }
+  getConnection(server_name) {
+    const connection = this.connections.get(server_name);
+    if (!connection) {
+      throw new ServerError("Server not found", {
+        server: server_name,
+        operation: "auth_callback"
+      });
+    }
+    return connection
   }
 
   async cleanup() {

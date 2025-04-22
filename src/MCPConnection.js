@@ -4,7 +4,9 @@ import {
   getDefaultEnvironment,
 } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import ReconnectingEventSource from "reconnecting-eventsource";
+import MCPHubOAuthProvider from "./utils/oauth-provider.js"
 import {
   ListToolsResultSchema,
   ListResourcesResultSchema,
@@ -19,6 +21,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import EventEmitter from "events";
 import logger from "./utils/logger.js";
+import open from "open";
 import {
   ConnectionError,
   ToolError,
@@ -26,10 +29,24 @@ import {
   wrapError,
 } from "./utils/errors.js";
 
+const ConnectionStatus = {
+  CONNECTED: "connected",
+  CONNECTING: "connecting",
+  DISCONNECTED: "disconnected",
+  UNAUTHORIZED: "unauthorized", // New status for OAuth flow
+  DISABLED: "disabled"
+};
+
+
 export class MCPConnection extends EventEmitter {
-  constructor(name, config, marketplace) {
+  constructor(name, config, marketplace, hubServerUrl) {
     super();
     this.name = name; // Keep as mcpId
+
+    // OAuth state
+    this.authProvider = null;
+    this.authCallback = null;
+    this.authCode = null;
 
     // Set display name from marketplace
     this.displayName = name; // Default to mcpId
@@ -57,11 +74,13 @@ export class MCPConnection extends EventEmitter {
     this.resources = [];
     this.prompts = [];
     this.resourceTemplates = [];
-    this.status = config.disabled ? "disabled" : "disconnected"; // disabled | disconnected | connecting | connected
+    this.status = config.disabled ? ConnectionStatus.DISABLED : ConnectionStatus.DISCONNECTED;
     this.error = null;
     this.startTime = null;
     this.lastStarted = null;
     this.disabled = config.disabled || false;
+    this.authorizationUrl = null;
+    this.hubServerUrl = hubServerUrl
   }
 
   async start() {
@@ -69,11 +88,11 @@ export class MCPConnection extends EventEmitter {
     if (this.disabled) {
       this.disabled = false;
       this.config.disabled = false;
-      this.status = "disconnected";
+      this.status = ConnectionStatus.DISCONNECTED;
     }
 
     // If already connected, return current state
-    if (this.status === "connected") {
+    if (this.status === ConnectionStatus.CONNECTED) {
       return this.getServerInfo();
     }
 
@@ -96,7 +115,7 @@ export class MCPConnection extends EventEmitter {
 
   // Calculate uptime in seconds
   getUptime() {
-    if (!this.startTime || !["connected", "disabled"].includes(this.status)) {
+    if (!this.startTime || ![ConnectionStatus.CONNECTED, ConnectionStatus.DISABLED].includes(this.status)) {
       return 0;
     }
     return Math.floor((Date.now() - this.startTime) / 1000);
@@ -105,14 +124,14 @@ export class MCPConnection extends EventEmitter {
   async connect() {
     try {
       if (this.disabled) {
-        this.status = "disabled";
+        this.status = ConnectionStatus.DISABLED;
         this.startTime = Date.now(); // Track uptime even when disabled
         this.lastStarted = new Date().toISOString();
         return;
       }
 
       this.error = null;
-      this.status = "connecting";
+      this.status = ConnectionStatus.CONNECTING;
       this.lastStarted = new Date().toISOString();
 
       this.client = new Client(
@@ -124,33 +143,46 @@ export class MCPConnection extends EventEmitter {
           capabilities: {},
         }
       );
+      // this.client.onerror = (error) => {
+      //   //this might trigger mostly with sse transport due to any interuptions
+      //   // logger.error("CLIENT_ERROR", `${this.name}: client error: ${error.message}`, {}, false);
+      //   logger.debug(`${this.name}: client error: ${error.message}`)
+      // };
 
       // Create appropriate transport based on transport type
       if (this.transportType === 'sse') {
+        this.authProvider = this.createOAuthProvider()
+
         // SSE transport setup with reconnection support
         const reconnectingEventSourceOptions = {
           max_retry_time: 5000, // Maximum time between retries (5 seconds)
-          withCredentials: this.config.headers?.["Authorization"] ? true : false,
+          // withCredentials: this.config.headers?.["Authorization"] ? true : false,
         };
 
+        //HACK: sending reconnectingEventSourceOptions in the SSEClientTransport needs us to create custom fetch function with headers created from authProvider tokens. This way we can use ReconnectingEventSource with necessary options
+        class ReconnectingES extends ReconnectingEventSource {
+          constructor(url, options) {
+            super(url, {
+              ...options || {},
+              ...reconnectingEventSourceOptions
+            })
+          }
+        }
         // Use ReconnectingEventSource for automatic reconnection
-        global.EventSource = ReconnectingEventSource;
-
+        global.EventSource = ReconnectingES
         this.transport = new SSEClientTransport(new URL(this.config.url), {
           requestInit: {
             headers: this.config.headers || {},
           },
-          eventSourceInit: reconnectingEventSourceOptions
+          authProvider: this.authProvider,
+          // INFO:: giving eventSourceInit leading to infinite loop 
+          // eventSourceInit: reconnectingEventSourceOptions
         });
 
         // Log reconnection attempts
         if (this.transport.eventSource) {
-          this.transport.eventSource.onretry = (event) => {
-            logger.info(`Attempting to reconnect to SSE server '${this.name}'`, {
-              server: this.name,
-              attempt: event.retryCount,
-              delay: event.retryDelay
-            });
+          this.transport.eventSource.onretry = (_) => {
+            logger.info(`Attempting to reconnect to SSE server '${this.name}'`);
           };
         }
       } else {
@@ -188,25 +220,9 @@ export class MCPConnection extends EventEmitter {
 
       // Handle transport errors with transport-specific details
       this.transport.onerror = (error) => {
-        const errorDetails = {
-          server: this.name,
-          type: this.transportType,
-          error: error.message,
-        };
-
-        // Add transport-specific error details
-        if (this.transportType === 'sse') {
-          errorDetails.url = this.config.url;
-          if (error instanceof Error && error.cause) {
-            errorDetails.cause = error.cause;
-          }
-        }
-
         const connectionError = new ConnectionError(
-          `Failed to communicate with ${this.transportType} server`,
-          errorDetails
+          `${this.name}: transport error: ${error.message}`,
         );
-
         logger.error(
           connectionError.code,
           connectionError.message,
@@ -214,7 +230,7 @@ export class MCPConnection extends EventEmitter {
           false
         );
         this.error = error.message;
-        this.status = "disconnected";
+        this.status = ConnectionStatus.DISCONNECTED;
         this.startTime = null;
 
         // Emit error event for handling at higher levels
@@ -222,15 +238,8 @@ export class MCPConnection extends EventEmitter {
       };
 
       this.transport.onclose = () => {
-        logger.info(
-          `${this.transportType.toUpperCase()} transport connection closed for server '${this.name}'`,
-          {
-            server: this.name,
-            type: this.transportType,
-            ...(this.transportType === 'sse' ? { url: this.config.url } : {})
-          }
-        );
-        this.status = "disconnected";
+        logger.info(`${this.transportType.toUpperCase()} transport connection closed for server '${this.name}'`);
+        this.status = ConnectionStatus.DISCONNECTED;
         this.startTime = null;
 
         // Emit close event for handling reconnection if needed
@@ -256,8 +265,19 @@ export class MCPConnection extends EventEmitter {
         }
       }
 
-      // Connect client (this will start the transport)
-      await this.client.connect(this.transport);
+      try {
+        // Connect client (this will start the transport)
+        await this.client.connect(this.transport);
+      } catch (error) {
+        // Handle 401 unauthorized responses
+        if (error.code === 401 || error instanceof UnauthorizedError) {
+          logger.warn(`Server '${this.name}' requires authorization`);
+          this.status = ConnectionStatus.UNAUTHORIZED;
+          this.authorizationUrl = this.authProvider.generatedAuthUrl;
+          return
+        }
+        throw error;
+      }
 
       // Fetch initial capabilities before marking as connected
       await this.updateCapabilities();
@@ -266,15 +286,11 @@ export class MCPConnection extends EventEmitter {
       this.setupNotificationHandlers();
 
       // Only mark as connected after capabilities are fetched
-      this.status = "connected";
+      this.status = ConnectionStatus.CONNECTED;
       this.startTime = Date.now();
       this.error = null;
 
-      logger.info(`'${this.name}' MCP server connected`, {
-        server: this.name,
-        tools: this.tools.length,
-        resources: this.resources.length,
-      });
+      logger.info(`'${this.name}' MCP server connected`);
     } catch (error) {
       // Ensure proper cleanup on error
       await this.disconnect(error.message);
@@ -363,13 +379,7 @@ export class MCPConnection extends EventEmitter {
         const response = await this.client.request({ method }, schema);
         return response;
       } catch (error) {
-        // logger.debug(
-        //   `Server '${this.name}' does not support capability '${method}'`,
-        //   {
-        //     server: this.name,
-        //     error: error.message,
-        //   }
-        // );
+        // logger.debug( `Server '${this.name}' does not support capability '${method}'`);
         return null;
       }
     };
@@ -393,18 +403,6 @@ export class MCPConnection extends EventEmitter {
       this.tools = toolsResponse?.tools || [];
       this.resources = resourcesResponse?.resources || [];
       this.prompts = promptsResponse?.prompts || [];
-
-      // logger.info(`Updated capabilities for server '${this.name}'`, {
-      //   server: this.name,
-      //   toolCount: this.tools.length,
-      //   resourceCount: this.resources.length,
-      //   templateCount: this.resourceTemplates.length,
-      //   supportedCapabilities: {
-      //     tools: !!toolsResponse,
-      //     resources: !!resourcesResponse,
-      //     resourceTemplates: !!templatesResponse,
-      //   },
-      // });
     } catch (error) {
       // Only log as warning since missing capabilities are expected in some cases
       logger.warn(`Error updating capabilities for server '${this.name}'`, {
@@ -428,7 +426,7 @@ export class MCPConnection extends EventEmitter {
         prompt: promptName,
       });
     }
-    if (this.status !== "connected") {
+    if (this.status !== ConnectionStatus.CONNECTED) {
       throw new ToolError("Server not connected", {
         server: this.name,
         prompt: promptName,
@@ -485,7 +483,7 @@ export class MCPConnection extends EventEmitter {
       });
     }
 
-    if (this.status !== "connected") {
+    if (this.status !== ConnectionStatus.CONNECTED) {
       throw new ToolError("Server not connected", {
         server: this.name,
         tool: toolName,
@@ -549,7 +547,7 @@ export class MCPConnection extends EventEmitter {
       });
     }
 
-    if (this.status !== "connected") {
+    if (this.status !== ConnectionStatus.CONNECTED) {
       throw new ResourceError("Server not connected", {
         server: this.name,
         uri,
@@ -599,7 +597,7 @@ export class MCPConnection extends EventEmitter {
     this.resources = [];
     this.prompts = [];
     this.resourceTemplates = [];
-    this.status = this.config.disabled ? "disabled" : "disconnected"; // disabled | disconnected | connecting | connected
+    this.status = this.config.disabled ? ConnectionStatus.DISABLED : ConnectionStatus.DISCONNECTED;
     this.error = error || null;
     this.startTime = null;
     this.lastStarted = null;
@@ -618,6 +616,39 @@ export class MCPConnection extends EventEmitter {
     this.resetState(error);
   }
 
+  // Create OAuth provider with proper metadata and storage
+  createOAuthProvider() {
+    return new MCPHubOAuthProvider({
+      serverName: this.name,
+      serverUrl: this.config.url,
+      hubServerUrl: this.hubServerUrl
+    })
+  }
+
+  async authorize() {
+    if (!this.authorizationUrl) {
+      throw new Error(`No authorization URL available for server '${this.name}'`);
+    }
+    //validate
+    new URL(this.authorizationUrl)
+    // log it in cases where the user in a browserless environment
+    logger.info(`Opening authorization URL for server '${this.name}': ${this.authorizationUrl.toString()}`);
+    // Open the authorization URL in the default browser 
+    await open(this.authorizationUrl.toString())
+    //Once the user authorizes, handleAuthCallback is called.
+    return {
+      authorizationUrl: this.authorizationUrl,
+    }
+  }
+
+
+  async handleAuthCallback(code) {
+    logger.debug(`Handling OAuth callback for server '${this.name}'`);
+    await this.transport.finishAuth(code);
+    logger.debug(`Successful code exchange for '${this.name}': Authorized, connecting with new tokens`);
+    await this.connect()
+  }
+
   getServerInfo() {
     return {
       name: this.name, // Original mcpId
@@ -634,6 +665,7 @@ export class MCPConnection extends EventEmitter {
       },
       uptime: this.getUptime(),
       lastStarted: this.lastStarted,
+      authorizationUrl: this.authorizationUrl,
     };
   }
 }
