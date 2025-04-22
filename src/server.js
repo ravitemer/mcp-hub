@@ -98,6 +98,7 @@ class ServiceManager {
     logger.info("Initializing MCP Hub");
     this.mcpHub = new MCPHub(this.config, {
       watch: this.watch,
+      port: this.port,
       marketplace,
     });
 
@@ -344,11 +345,6 @@ registerRoute(
         throw new ValidationError("Missing server name", { field: "server_name" });
       }
       const status = await serviceManager.mcpHub.startServer(server_name);
-      serviceManager.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, {
-        changes: {
-          modified: [server_name],
-        }
-      })
       res.json({
         status: "ok",
         server: status,
@@ -356,6 +352,12 @@ registerRoute(
       });
     } catch (error) {
       throw wrapError(error, "SERVER_START_ERROR", { server: server_name });
+    } finally {
+      serviceManager.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, {
+        changes: {
+          modified: [server_name],
+        }
+      })
     }
   }
 );
@@ -376,11 +378,6 @@ registerRoute(
         server_name,
         disable === "true"
       );
-      serviceManager.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, {
-        changes: {
-          modified: [server_name],
-        }
-      })
       res.json({
         status: "ok",
         server: status,
@@ -388,6 +385,12 @@ registerRoute(
       });
     } catch (error) {
       throw wrapError(error, "SERVER_STOP_ERROR", { server: server_name });
+    } finally {
+      serviceManager.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, {
+        changes: {
+          modified: [server_name],
+        }
+      })
     }
   }
 );
@@ -536,6 +539,7 @@ registerRoute(
 )
 
 
+
 // Register tool execution endpoint
 registerRoute(
   "POST",
@@ -602,6 +606,108 @@ registerRoute(
     }
   }
 );
+
+
+registerRoute(
+  "POST",
+  "/servers/authorize",
+  "Handles opening different kinds of uris",
+  async (req, res) => {
+    const { server_name } = req.body;
+    try {
+      if (!server_name) {
+        throw new ValidationError("Missing server name", { field: "server_name" });
+      }
+      const connection = serviceManager.mcpHub.getConnection(server_name)
+      const result = await connection.authorize()
+      res.json(result);
+    } catch (error) {
+      throw wrapError(error, "OPEN_REQUEST_ERROR", error.data || {});
+    }
+  }
+)
+
+
+registerRoute(
+  "GET",
+  "/oauth/callback",
+  "Handle OAuth callback",
+  async (req, res) => {
+    const { code, server_name } = req.query;
+
+    try {
+      if (!code || !server_name) {
+        throw new ValidationError("Missing code or server_name parameter");
+      }
+      // Send initial processing page
+      res.write(`
+        <html>
+          <head>
+            <title>MCP HUB</title>
+            <style>
+              body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+              .loader { border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 20px auto; }
+              @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+              .hidden { display: none; }
+              .message { margin: 20px 0; font-size: 18px; }
+            </style>
+            <script>
+              function updateStatus(status, message) {
+                document.getElementById('processing').style.display = status === 'processing' ? 'block' : 'none';
+                document.getElementById('success').style.display = status === 'success' ? 'block' : 'none';
+                document.getElementById('error').style.display = status === 'error' ? 'block' : 'none';
+                if (message) {
+                  document.getElementById('errorMessage').textContent = message;
+                }
+              }
+            </script>
+          </head>
+          <body>
+            <div id="processing">
+              <h1>MCP HUB</h1>
+              <h2><code>${server_name}<code> Authorization Processing</h2>
+              <div class="loader"></div>
+              <p class="message">Please wait while mcp-hub completes the authorization...</p>
+            </div>
+            <div id="success" class="hidden">
+              <h1>MCP HUB</h1>
+              <h2><code>${server_name}<code> Authorization Successful</h2>
+              <p class="message">Your server has been authorized successfully!</p>
+              <p>You can close this window and return to the application.</p>
+            </div>
+            <div id="error" class="hidden">
+              <h1>MCP HUB</h1>
+              <h2><code>${server_name}<code> Authorization Failed</h2>
+              <p class="message">An error occurred during authorization:</p>
+              <p id="errorMessage" style="color: red;"></p>
+              <p class="message">For errors like 'fetch failed' (serverless hosting might take time to startup), stopping and starting the MCP Server should help. </p>
+            </div>
+          </body>
+        </html>
+      `);
+
+      const connection = serviceManager.mcpHub.getConnection(server_name);
+
+      // Process authentication asynchronously
+      await connection.handleAuthCallback(code)
+      res.write('<script>updateStatus("success");</script>');
+
+    } catch (error) {
+      logger.error('OAUTH_CALLBACK_ERROR', `Error during OAuth callback: ${error.message}`, {}, false)
+      res.write(`<script>updateStatus("error", "${error.message.replace(/"/g, '\\"')}");</script>`);
+    } finally {
+      // Still broadcast the update for consistency
+      serviceManager.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, {
+        changes: {
+          modified: [server_name],
+        }
+      });
+      res.end();
+    }
+  }
+);
+
+
 
 // Error handler middleware
 router.use((err, req, res, next) => {

@@ -23,30 +23,6 @@ export class ConfigManager extends EventEmitter {
       this.#previousConfig = configPathOrObject;
     }
   }
-
-  /**
-   * Compare key fields between server configs to determine if meaningful changes occurred
-   */
-  #hasKeyFieldChanges(oldConfig, newConfig) {
-    return this.#KEY_FIELDS.some(field => {
-      // Handle missing fields
-      if (!oldConfig.hasOwnProperty(field) && !newConfig.hasOwnProperty(field)) {
-        return false;
-      }
-      if (!oldConfig.hasOwnProperty(field) || !newConfig.hasOwnProperty(field)) {
-        return true;
-      }
-
-      // Deep compare for arrays and objects
-      if (field === 'args' || field === 'env' || field === 'headers') {
-        return !deepEqual(oldConfig[field], newConfig[field]);
-      }
-
-      // Simple compare for primitives
-      return oldConfig[field] !== newConfig[field];
-    });
-  }
-
   /**
    * Calculate differences between old and new server configs
    */
@@ -296,7 +272,7 @@ export class ConfigManager extends EventEmitter {
         } catch (error) {
           logger.error(
             'CONFIG_RELOAD_ERROR',
-            'Error reloading config after change',
+            `Error reloading config after change: ${error.message}`,
             error instanceof ConfigError
               ? error.data
               : { error: error.message },
