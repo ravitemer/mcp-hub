@@ -240,7 +240,7 @@ export class MCPHub extends EventEmitter {
         // Log but don't throw since we're cleaning up
         logger.error(
           "SERVER_DISCONNECT_ERROR",
-          "Error disconnecting server",
+          `Error disconnecting server: ${error.message}`,
           {
             server: name,
             error: error.message,
