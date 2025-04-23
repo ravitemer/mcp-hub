@@ -21,12 +21,12 @@
 
         mcp-hub = pkgs.buildNpmPackage {
           pname = "mcp-hub";
-          version = "3.1.0";
+          version = "3.1.1";
           src = self;
           inherit nodejs;
 
           nativeBuildInputs = [nodejs];
-          npmDepsHash = "sha256-RmfyUmZtZZshKNgiDDSpxe2clz0K8fifL8dGjOzBPAc=";
+          npmDepsHash = "sha256-7fMv/mje6TcDr4XjrXADOtC+kumisIZVeaWEa8UynoU=";
         };
       in {
         packages = {
