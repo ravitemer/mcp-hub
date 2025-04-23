@@ -182,10 +182,10 @@ export class MCPHub extends EventEmitter {
         const connection = this.connections.get(name);
         if (serverConfig.disabled !== connection?.disabled) {
           if (serverConfig.disabled) {
-            await this.disconnectServer(name)
+            await this.stopServer(name, true)
             logger.info(`Server '${name}' disabled`)
           } else {
-            await this.connectServer(name, serverConfig);
+            await this.startServer(name, serverConfig);
             logger.info(`Server '${name}' enabled`)
           }
         } else {
