@@ -4,15 +4,48 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-MCP Hub acts as a central coordinator between clients and multiple MCP servers, making it easy to utilize capabilities from multiple servers through a single interface.
+MCP Hub acts as a central coordinator between clients and multiple MCP servers, making it easy to utilize capabilities from multiple servers through a single interface. Implements [MCP 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26) specification.
+
+## Feature Support
+
+| Category | Feature | Support | Notes |
+|----------|---------|---------|-------|
+| **Transport** ||||
+| | streamable-http | ✅ | Primary transport protocol for remote servers |
+| | SSE | ✅ | Fallback transport for remote servers |
+| | STDIO | ✅ | For running local servers |
+| **Authentication** ||||
+| | OAuth 2.0 | ✅ | With PKCE flow |
+| | Headers | ✅ | For API keys/tokens |
+| **Capabilities** ||||
+| | Tools | ✅ | List tools |
+| | 🔔 Tool List Changed | ✅ | Real-time updates |
+| | Resources | ✅ | Full support |
+| | 🔔 Resource List Changed | ✅ | Real-time updates |
+| | Resource Templates | ✅ | URI templates |
+| | Prompts | ✅ | Full support |
+| | 🔔 Prompts List Changed | ✅ | Real-time updates |
+| | Roots | ❌ | Not supported |
+| | Sampling | ❌ | Not supported |
+| | Completion | ❌ | Not supported |
+| **Marketplace** ||||
+| | Server Discovery | ✅ | Browse available servers |
+| | Installation | ✅ | Auto configuration |
+| **Real-time** ||||
+| | Status Updates | ✅ | Server & connection state |
+| | Capability Updates | ✅ | Automatic refresh |
+| | Event Streaming to clients | ✅ | SSE-based |
+| | Auto Reconnection | ✅ | With backoff |
 
 ## Key Features
 
 - **Dynamic Server Management**:
   - Start, stop, enable/disable servers on demand
   - Real-time configuration updates with automatic server reconnection
-  - Support for both local (stdio) and remote (SSE) MCP servers 
+  - Support for local (STDIO) and remote (streamable-http/SSE) MCP servers 
   - Health monitoring and automatic recovery
+  - OAuth authentication with PKCE flow
+  - Header-based token authentication
 
 - **Unified REST API**:
   - Execute tools from any connected server
@@ -48,11 +81,14 @@ The main management server that:
 - Processes configuration updates and server reconnection
 
 #### MCP Servers
-Individual servers that:
-- Provide specific tools and resources
-- Can be local processes (STDIO) or remote endpoints (SSE)
-- Have their own set of capabilities (tools, resources, templates)
-- Are dynamically managed by the hub
+Connected services that:
+- Provide tools, resources, templates, and prompts
+- Support two connectivity modes:
+  - Script-based STDIO servers for local operations
+  - Remote servers (streamable-http/SSE) with OAuth support
+- Implement real-time capability updates
+- Support automatic status recovery
+- Maintain consistent interface across transport types
 
 ## Installation
 
@@ -83,56 +119,51 @@ Options:
 
 MCP Hub uses a JSON configuration file to define managed servers:
 
-```json
+```js
 {
   "mcpServers": {
-    "stdio-server": {
+    "filesystem": {
       "command": "npx",
-        "args": ["example-server"],
-        "env": {
-          "API_KEY": "", // Will use process.env.API_KEY
-          "DEBUG": "true", // Will use this value
-          "SECRET_TOKEN": null // Will use process.env.SECRET_TOKEN
-        },
-        "disabled": false
+      "args": ["arg1", "$ACCESS_TOKEN"], //$ACCESS_TOKEN is replaced with ACCESS_TOKEN from env field
+      "env": {
+        "ACCESS_TOKEN": null, // Fallback to process.env.ACCESS_TOKEN for null or ""
+        "SECRET": "secret" // Uses "secret"
+      },
     },
-      "sse-server": {
-        "url": "https://api.example.com/mcp",
-        "headers": {
-          "Authorization": "Bearer token",
-          "Content-Type": "application/json"
-        },
-        "disabled": false
-      }
+    "remote-server": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer token"
+      },
+    }
   }
 }
 ```
 
 ### Configuration Options
 
-MCP Hub supports two types of servers: STDIO (local) and SSE (remote). The server type is automatically determined based on the configuration fields provided.
+MCP Hub supports both STDIO servers and remote servers (streamable-http/SSE). The server type is automatically detected from the configuration.
 
 #### STDIO Server Options
 
-- **command**: Command to start the local MCP server
-- **args**: Array of command line arguments
-- **env**: Environment variables for the server. If a variable is specified with a falsy value (empty string, null, undefined), it will fall back to using the corresponding system environment variable if available.
-- **disabled**: Whether the server is disabled (default: false)
+For running script-based MCP servers locally:
 
-#### SSE Server Options
+- **command**: Command to start the MCP server executable
+- **args**: Array of command line arguments (arguments starting with `$` will be replaced with env values if available)
+- **env**: Environment variables with system fallback if value is empty/null
 
-- **url**: The URL of the remote SSE server endpoint
-- **headers**: Optional HTTP headers for the SSE connection (e.g., for authentication)
-- **disabled**: Whether the server is disabled (default: false)
+#### Remote Server Options
 
-##### Server Type Detection
+For connecting to remote MCP servers:
 
-The server type (STDIO or SSE) is automatically determined based on the presence of specific fields:
-- If `command` is present → STDIO server
-- If `url` is present → SSE server
+- **url**: Server endpoint URL
+- **headers**: Optional headers for authentication
 
-Note: A server configuration cannot mix STDIO and SSE fields - it must be one type or the other.
+The server type is determined by:
+- STDIO server → Has `command` field
+- Remote server → Has `url` field
 
+Note: A server configuration cannot mix STDIO and remote server fields.
 
 ## Nix
 

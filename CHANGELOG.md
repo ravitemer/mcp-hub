@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2025-04-23
+
+### Added
+- Support for MCP 2025-03-26 specification
+- Primary streamable-http transport for remote servers
+- SSE fallback transport support
+- OAuth 2.0 authentication with PKCE flow
+- Comprehensive feature support matrix in documentation
+
 ## [3.0.5] - 2025-04-21
 
 ### Added
