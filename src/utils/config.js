@@ -20,7 +20,7 @@ export class ConfigManager extends EventEmitter {
       this.configPath = configPathOrObject;
     } else if (configPathOrObject && typeof configPathOrObject === "object") {
       this.config = configPathOrObject;
-      this.#previousConfig = configPathOrObject;
+      this.#previousConfig = JSON.parse(JSON.stringify(configPathOrObject));
     }
   }
   /**
@@ -89,8 +89,9 @@ export class ConfigManager extends EventEmitter {
       this.configPath = newConfigOrPath;
       await this.loadConfig();
     } else if (newConfigOrPath && typeof newConfigOrPath === "object") {
-      // Update config directly
+      // Update config directly with deep clone for previousConfig
       this.config = newConfigOrPath;
+      this.#previousConfig = JSON.parse(JSON.stringify(newConfigOrPath));
     }
   }
 
@@ -182,9 +183,9 @@ export class ConfigManager extends EventEmitter {
       // Calculate changes from previous config
       const changes = this.#diffConfigs(this.#previousConfig?.mcpServers, newConfig.mcpServers);
 
-      // Store new config as current
+      // Store new config as current, with deep clone for previousConfig to ensure separate references
       this.config = newConfig;
-      this.#previousConfig = newConfig;
+      this.#previousConfig = JSON.parse(JSON.stringify(newConfig));
 
       logger.debug(`Config loaded successfully from ${this.configPath}`, {
         path: this.configPath,

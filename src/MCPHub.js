@@ -182,10 +182,10 @@ export class MCPHub extends EventEmitter {
         const connection = this.connections.get(name);
         if (serverConfig.disabled !== connection?.disabled) {
           if (serverConfig.disabled) {
-            await this.stopServer(name, true);
+            await this.disconnectServer(name)
             logger.info(`Server '${name}' disabled`)
           } else {
-            await this.startServer(name);
+            await this.connectServer(name, serverConfig);
             logger.info(`Server '${name}' enabled`)
           }
         } else {
@@ -216,8 +216,11 @@ export class MCPHub extends EventEmitter {
   }
 
   async connectServer(name, config) {
-    const connection = new MCPConnection(name, config, this.marketplace, this.hubServerUrl);
-    this.connections.set(name, connection);
+    let connection = this.getConnection(name)
+    if (!connection) {
+      connection = new MCPConnection(name, config, this.marketplace, this.hubServerUrl);
+      this.connections.set(name, connection);
+    }
     await connection.connect();
     return connection.getServerInfo();
   }
@@ -244,12 +247,6 @@ export class MCPHub extends EventEmitter {
   }
   getConnection(server_name) {
     const connection = this.connections.get(server_name);
-    if (!connection) {
-      throw new ServerError("Server not found", {
-        server: server_name,
-        operation: "auth_callback"
-      });
-    }
     return connection
   }
 
