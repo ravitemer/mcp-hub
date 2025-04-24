@@ -262,7 +262,7 @@ export class ConfigManager extends EventEmitter {
           if (changes.added.length === 0 &&
             changes.removed.length === 0 &&
             changes.modified.length === 0) {
-            logger.debug('No significant config changes detected');
+            // logger.debug('No significant config changes detected');
           } else {
             logger.info('Config changes processed', {
               added: changes.added.length,
