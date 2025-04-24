@@ -134,7 +134,7 @@ MCP Hub uses a JSON configuration file to define managed servers:
     "remote-server": {
       "url": "https://api.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer token"
+        "Authorization": "Bearer ${EXAMPLE_API_KEY}" // Replaced with env value
       },
     }
   }
