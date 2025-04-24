@@ -657,11 +657,28 @@ export class MCPConnection extends EventEmitter {
     return transport
   }
 
+  _resolveHeaders(headers = {}) {
+    const resolvedHeaders = {};
+
+    // Process headers, replacing ${VARIABLE} placeholders with process.env values
+    Object.keys(headers).forEach((key) => {
+      let value = headers[key];
+      if (typeof value === 'string' && value.match(/\${[^}]+}/)) {
+        value = value.replace(/\${([^}]+)}/g, (match, varName) => {
+          // Replace with process.env value or retain placeholder if undefined
+          return process.env[varName] !== undefined ? process.env[varName] : match;
+        });
+      }
+      resolvedHeaders[key] = value;
+    });
+    return resolvedHeaders
+  }
+
   _createStreambleHTTPTransport(authProvider) {
     const options = {
       authProvider,
       requestInit: {
-        headers: this.config.headers || {},
+        headers: this._resolveHeaders(this.config.headers),
       },
       // reconnectionOptions?: StreamableHTTPReconnectionOptions
       // sessionId?: string;
@@ -690,7 +707,7 @@ export class MCPConnection extends EventEmitter {
     global.EventSource = ReconnectingES
     const transport = new SSEClientTransport(new URL(this.config.url), {
       requestInit: {
-        headers: this.config.headers || {},
+        headers: this._resolveHeaders(this.config.headers),
       },
       authProvider,
       // INFO:: giving eventSourceInit leading to infinite loop, not needed anymore with global ReconnectingES
