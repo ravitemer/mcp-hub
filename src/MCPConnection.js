@@ -123,8 +123,11 @@ export class MCPConnection extends EventEmitter {
     return Math.floor((Date.now() - this.startTime) / 1000);
   }
 
-  async connect() {
+  async connect(config) {
     try {
+      if (config) {
+        this.config = config
+      }
       if (this.disabled) {
         this.status = ConnectionStatus.DISABLED;
         this.startTime = Date.now(); // Track uptime even when disabled
@@ -488,6 +491,7 @@ export class MCPConnection extends EventEmitter {
   }
 
   async disconnect(error) {
+    this.resetState(error);
     if (!this.client) return
     this.removeNotificationHandlers();
     if (this.transport) {
@@ -503,7 +507,6 @@ export class MCPConnection extends EventEmitter {
       }
       await this.transport.close();
     }
-    this.resetState(error);
   }
 
   // Create OAuth provider with proper metadata and storage
@@ -568,35 +571,76 @@ export class MCPConnection extends EventEmitter {
 
   _createStdioTransport() {
     const env = this.config.env || {};
-    // For each key in env, use process.env as fallback if value is falsy
-    // This means empty string, null, undefined etc. will fall back to process.env value
-    // Example: { API_KEY: "" } or { API_KEY: null } will use process.env.API_KEY
-    Object.keys(env).forEach((key) => {
-      env[key] = env[key] ? env[key] : process.env[key];
-    });
-    const serverEnv = {
-      //INFO: getDefaultEnvironment is imp in order to start mcp servers properly
-      ...getDefaultEnvironment(),
-      ...(process.env.MCP_ENV_VARS
-        ? JSON.parse(process.env.MCP_ENV_VARS)
-        : {}),
-      ...env,
+    const resolvedEnv = {};
+
+    // Process env keys in multiple passes to handle forward references
+    let unresolved = Object.keys(env);
+    let passCount = 0;
+    const maxPasses = 10; // Prevent infinite loops for circular dependencies
+
+    while (unresolved.length > 0 && passCount < maxPasses) {
+      const nextUnresolved = [];
+      unresolved.forEach((key) => {
+        let value = env[key];
+        if (typeof value === 'string' && value.match(/\${[^}]+}/)) {
+          // Replace ${VARIABLE} placeholders
+          const newValue = value.replace(/\${([^}]+)}/g, (match, varName) => {
+            // Check resolvedEnv first, then env, then process.env
+            if (resolvedEnv[varName]) {
+              return resolvedEnv[varName];
+            } else if (env[varName]) {
+              return env[varName];
+            } else if (process.env[varName]) {
+              return process.env[varName];
+            }
+            return match; // Retain placeholder if unresolved
+          });
+          if (newValue.match(/\${[^}]+}/)) {
+            // If placeholders remain, defer to next pass
+            nextUnresolved.push(key);
+          } else {
+            // No unresolved placeholders, store result
+            resolvedEnv[key] = newValue ? newValue : process.env[key];
+          }
+        } else {
+          // No placeholders, store result
+          resolvedEnv[key] = value ? value : process.env[key];
+        }
+      });
+      unresolved = nextUnresolved;
+      passCount++;
     }
 
+    // Check for unresolved placeholders and keep them as is
+    if (unresolved.length > 0) {
+      logger.error("UNRESOLVED_ENV", `${this.name}: Unresolvable or circular dependencies detected in env while replacing \${} fields: ${unresolved.join(', ')}. Falling back to placeholder value`, {}, false);
+      unresolved.forEach((key) => {
+        resolvedEnv[key] = env[key]; // Keep unresolved as is
+      });
+    }
+
+    // Build serverEnv with resolved values
+    const serverEnv = {
+      // INFO: getDefaultEnvironment is imp in order to start mcp servers properly
+      ...getDefaultEnvironment(),
+      ...(process.env.MCP_ENV_VARS ? JSON.parse(process.env.MCP_ENV_VARS) : {}),
+      ...resolvedEnv,
+    };
     // Default to STDIO transport
     const transport = new StdioClientTransport({
       command: this.config.command,
       args: (this.config.args || []).map(arg => {
-        //if arg starts with $ then replace it with the value from env
-        if (arg.startsWith("$")) {
+        // If arg starts with $, replace it with the value from serverEnv, fallback to process.env
+        if (arg.startsWith('$')) {
           const envKey = arg.substring(1);
-          return serverEnv[envKey] || arg;
+          return serverEnv[envKey] || process.env[envKey] || arg;
         }
         return arg;
       }),
       env: serverEnv,
-      stderr: "pipe",
+      stderr: 'pipe',
     });
+
     //listen to stderr for stdio servers
     const stderrStream = transport.stderr;
     if (stderrStream) {
@@ -673,7 +717,8 @@ export class MCPConnection extends EventEmitter {
 
     client.onclose = () => {
       logger.debug(`'${this.name}' transport closed`)
-      this.status = [ConnectionStatus.DISCONNECTED, ConnectionStatus.DISABLED].includes(this.status) ? this.status : ConnectionStatus.DISCONNECTED;
+      //This is causing a bug where in the frontend the server is shown as disconnected when we try disconnect() which sets to disconnected and again connect() which sets to connecting. Having this here negated the connecting status.
+      // this.status = [ConnectionStatus.DISCONNECTED, ConnectionStatus.DISABLED].includes(this.status) ? this.status : ConnectionStatus.DISCONNECTED;
       this.startTime = null;
       // Emit close event for handling reconnection if needed
       this.emit("connectionClosed", {

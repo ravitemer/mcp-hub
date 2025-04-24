@@ -221,7 +221,7 @@ export class MCPHub extends EventEmitter {
       connection = new MCPConnection(name, config, this.marketplace, this.hubServerUrl);
       this.connections.set(name, connection);
     }
-    await connection.connect();
+    await connection.connect(config);
     return connection.getServerInfo();
   }
 
