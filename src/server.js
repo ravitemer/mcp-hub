@@ -148,6 +148,7 @@ class ServiceManager {
         port: this.port,
       });
 
+      //INFO: this doesn't throw EADDRINUSE in express@v5 but is thrown inside on("error")
       this.server = app.listen(this.port, () => {
         logger.info("HTTP_SERVER_STARTED");
         resolve();
@@ -155,6 +156,7 @@ class ServiceManager {
 
       this.server.on("error", (error) => {
         this.setState(HubState.ERROR, { message: error.message, code: error.code })
+        logger.info(`HTTP_SERVER_START_ERROR: ${error.code}: ${error.message}`);
         reject(
           wrapError(error, "HTTP_SERVER_ERROR", {
             port: this.port,
