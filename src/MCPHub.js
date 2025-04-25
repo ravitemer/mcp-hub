@@ -151,7 +151,6 @@ export class MCPHub extends EventEmitter {
     if (!connection) {
       throw new ServerError("Server connection not found", { server: name });
     }
-    connection.removeAllListeners();
     return await connection.stop(disable);
   }
 
