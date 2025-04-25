@@ -192,7 +192,6 @@ export class MCPConnection extends EventEmitter {
     } catch (error) {
       // Ensure proper cleanup on error
       await this.disconnect(error.message);
-
       throw new ConnectionError(
         `Failed to connect to "${this.name}" MCP server: ${error.message}`,
         {
@@ -204,14 +203,15 @@ export class MCPConnection extends EventEmitter {
   }
 
   removeNotificationHandlers() {
+    if (!this.client) return
     // Remove all notification handlers
     // For some reason removeNotificationHandlers doesn't seem to work 
     // so we are setting them to nothing
     const nothing = () => { };
-    this.client?.setNotificationHandler(ToolListChangedNotificationSchema, nothing)
-    this.client?.setNotificationHandler(ResourceListChangedNotificationSchema, nothing)
-    this.client?.setNotificationHandler(PromptListChangedNotificationSchema, nothing)
-    this.client?.setNotificationHandler(LoggingMessageNotificationSchema, nothing)
+    this.client.setNotificationHandler(ToolListChangedNotificationSchema, nothing)
+    this.client.setNotificationHandler(ResourceListChangedNotificationSchema, nothing)
+    this.client.setNotificationHandler(PromptListChangedNotificationSchema, nothing)
+    this.client.setNotificationHandler(LoggingMessageNotificationSchema, nothing)
   }
 
   setupNotificationHandlers() {
@@ -491,8 +491,6 @@ export class MCPConnection extends EventEmitter {
   }
 
   async disconnect(error) {
-    this.resetState(error);
-    if (!this.client) return
     this.removeNotificationHandlers();
     if (this.transport) {
       // First try to terminate the session gracefully
@@ -507,6 +505,7 @@ export class MCPConnection extends EventEmitter {
       }
       await this.transport.close();
     }
+    this.resetState(error);
   }
 
   // Create OAuth provider with proper metadata and storage
