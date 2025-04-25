@@ -462,6 +462,25 @@ registerRoute("POST", "/restart", "Restart MCP Hub", async (req, res) => {
   }
 })
 
+// Sends a hard-restarting signal to all the clients. ON receiving clients should kill the process and start it again
+// This is needed in order to load the latest process.env
+// For usual restarts use the /restart endpoint
+registerRoute("POST", "/hard-restart", "Hard Restart MCP Hub", async (req, res) => {
+  try {
+
+    if (serviceManager.mcpHub) {
+      serviceManager.setState(HubState.RESTARTING)
+      process.emit('SIGTERM')
+    }
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    throw wrapError(error, "HUB_HARD_RESTART_ERROR");
+  }
+})
+
 // Register server refresh endpoint
 registerRoute(
   "POST",
