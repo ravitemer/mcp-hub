@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.6] - 2025-04-25
+
+### Added
+- /hard-restart endpoint
+
+### Changed
+- Reverted express v5 to v4
 
 ## [3.1.5] - 2025-04-25
 
