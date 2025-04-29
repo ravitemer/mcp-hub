@@ -17,7 +17,7 @@
       systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
       perSystem = {pkgs, ...}: let
-        nodejs = pkgs.nodejs_18;
+        nodejs = pkgs.nodejs;
 
         mcp-hub = pkgs.buildNpmPackage {
           pname = "mcp-hub";
