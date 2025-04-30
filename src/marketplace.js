@@ -95,9 +95,9 @@ export class Marketplace {
       try {
         const content = await fs.readFile(this.cacheFile, "utf-8");
         this.cache = JSON.parse(content);
-        logger.debug("Loaded marketplace cache", {
-          catalogItems: this.cache.catalog.items.length,
-          detailedServers: Object.keys(this.cache.serverDetails).length,
+        const items = this.cache.catalog.items || [];
+        logger.debug(`Loaded marketplace cache: ${items.length} loaded`, {
+          catalogItems: items.length,
           isFresh: this.isCatalogValid(),
         });
       } catch (error) {
@@ -185,7 +185,7 @@ export class Marketplace {
    * @returns {boolean} True if cache is valid
    */
   isCatalogValid() {
-    if (!this.cache.catalog.lastUpdated) return false;
+    if (!this.cache.catalog.lastUpdated || this.cache.catalog.items.length === 0) return false;
     const age = Date.now() - new Date(this.cache.catalog.lastUpdated).getTime();
     return age < this.ttl;
   }
