@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+
+## [3.1.7] - 2025-04-30
+
+### Fixed
+- Refetch marketplace catalog if empty
+
+
 ## [3.1.6] - 2025-04-25
 
 ### Added
