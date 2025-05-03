@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.8] - 2025-05-03
+
+### Changed
+- Update open and @modelcontextprotocol/sdk to latest versions
 
 ## [3.1.7] - 2025-04-30
 

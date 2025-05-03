@@ -39,7 +39,7 @@
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.10.2",
+    "@modelcontextprotocol/sdk": "^1.11.0",
     "@vitest/coverage-v8": "^3.1.2",
     "chokidar": "^4.0.3",
     "esbuild": "^0.25.3",
@@ -48,7 +48,7 @@
     "mock-fs": "^5.5.0",
     "nock": "^14.0.4",
     "nodemon": "^3.1.10",
-    "open": "^10.1.1",
+    "open": "^10.1.2",
     "reconnecting-eventsource": "^1.6.4",
     "supertest": "^7.1.0",
     "uuid": "^11.1.0",
