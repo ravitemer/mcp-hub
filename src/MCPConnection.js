@@ -644,8 +644,6 @@ export class MCPConnection extends EventEmitter {
         resolvedEnv[key] = env[key]; // Keep unresolved as is
       });
     }
-
-    logger.debug(JSON.stringify(resolvedEnv, null, 2))
     // Build serverEnv with resolved values
     const serverEnv = {
       // INFO: getDefaultEnvironment is imp in order to start mcp servers properly
