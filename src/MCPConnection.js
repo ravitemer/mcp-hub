@@ -142,7 +142,7 @@ export class MCPConnection extends EventEmitter {
       try {
         // Create appropriate transport based on transport type
         if (this.transportType === 'stdio') {
-          this.transport = this._createStdioTransport();
+          this.transport = await this._createStdioTransport();
           this.client = this._createClient();
           await this.client.connect(this.transport);
         } else {
@@ -568,10 +568,34 @@ export class MCPConnection extends EventEmitter {
     };
   }
 
-  _createStdioTransport() {
+  async _createStdioTransport() {
     const env = this.config.env || {};
     const resolvedEnv = {};
 
+    // First pass: Execute commands for vars starting with "$:"
+    for (const [key, value] of Object.entries(env)) {
+      if (typeof value === 'string' && value.startsWith('$:')) {
+        try {
+          // Extract command after "$:"
+          const command = value.slice(2).trim();
+          logger.debug(`Executing command for ${key}`)
+
+          // Execute command and capture output
+          const { exec } = await import('child_process');
+          const { promisify } = await import('util');
+          const execPromise = promisify(exec);
+
+          const { stdout } = await execPromise(command);
+          // Store trimmed output
+          resolvedEnv[key] = stdout.trim();
+
+          logger.debug(`Successfully resolved command for ${key}`)
+        } catch (error) {
+          logger.warn(`Failed to execute command for ${key}: ${error.message}`);
+          resolvedEnv[key] = env[key]; // Keep original value on error
+        }
+      }
+    }
     // Process env keys in multiple passes to handle forward references
     let unresolved = Object.keys(env);
     let passCount = 0;
@@ -580,6 +604,9 @@ export class MCPConnection extends EventEmitter {
     while (unresolved.length > 0 && passCount < maxPasses) {
       const nextUnresolved = [];
       unresolved.forEach((key) => {
+        if (resolvedEnv[key]) {
+          return
+        }
         let value = env[key];
         if (typeof value === 'string' && value.match(/\${[^}]+}/)) {
           // Replace ${VARIABLE} placeholders
@@ -618,6 +645,7 @@ export class MCPConnection extends EventEmitter {
       });
     }
 
+    logger.debug(JSON.stringify(resolvedEnv, null, 2))
     // Build serverEnv with resolved values
     const serverEnv = {
       // INFO: getDefaultEnvironment is imp in order to start mcp servers properly

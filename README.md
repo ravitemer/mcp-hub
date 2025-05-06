@@ -127,8 +127,10 @@ MCP Hub uses a JSON configuration file to define managed servers:
       "args": ["arg1", "$ACCESS_TOKEN"], //$ACCESS_TOKEN is replaced with ACCESS_TOKEN from env field
       "env": {
         "ACCESS_TOKEN": null, // Fallback to process.env.ACCESS_TOKEN for null or ""
+        "OP_KEY": "$: op://example/secret", // use $: at the beginning to indicate that this is a command
         "AUTH_HEADER": "Bearer ${ACCESS_TOKEN}", // Placeholders will be replaced with values from the env object itself and falling back to process.env
         "SECRET": "secret" // Uses "secret"
+
       },
     },
     "remote-server": {
