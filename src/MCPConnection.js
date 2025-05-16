@@ -670,13 +670,13 @@ export class MCPConnection extends EventEmitter {
     const stderrStream = transport.stderr;
     if (stderrStream) {
       stderrStream.on("data", (data) => {
-        const errorOutput = data.toString();
-        const error = new ConnectionError("Server error output", {
-          server: this.name,
-          error: errorOutput,
-        });
-        logger.error(error.code, error.message, error.data, false);
-        this.error = errorOutput;
+        const errorOutput = data.toString().trim();
+        // const error = new ConnectionError("Server error output", {
+        //   server: this.name,
+        //   error: errorOutput,
+        // });
+        logger.warn(`${this.name} stderr: ${errorOutput}`)
+        // this.error = errorOutput;
       });
     }
     return transport
