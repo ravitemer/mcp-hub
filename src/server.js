@@ -531,7 +531,7 @@ registerRoute(
   "Get a prompt from a specific server",
   async (req, res) => {
 
-    const { server_name, prompt, arguments: args } = req.body;
+    const { server_name, prompt, arguments: args, request_options } = req.body;
     try {
 
       if (!server_name) {
@@ -543,7 +543,8 @@ registerRoute(
       const result = await serviceManager.mcpHub.getPrompt(
         server_name,
         prompt,
-        args || {}
+        args || {},
+        request_options
       );
       res.json({
         result,
@@ -568,7 +569,7 @@ registerRoute(
   "Execute a tool on a specific server",
   async (req, res) => {
 
-    const { server_name, tool, arguments: args } = req.body;
+    const { server_name, tool, arguments: args, request_options } = req.body;
     try {
 
       if (!server_name) {
@@ -580,7 +581,8 @@ registerRoute(
       const result = await serviceManager.mcpHub.callTool(
         server_name,
         tool,
-        args || {}
+        args || {},
+        request_options
       );
       res.json({
         result,
@@ -603,7 +605,7 @@ registerRoute(
   "Access a resource on a specific server",
   async (req, res) => {
 
-    const { server_name, uri } = req.body;
+    const { server_name, uri, request_options } = req.body;
     try {
 
       if (!server_name) {
@@ -613,7 +615,7 @@ registerRoute(
       if (!uri) {
         throw new ValidationError("Missing resource URI", { field: "uri" });
       }
-      const result = await serviceManager.mcpHub.readResource(server_name, uri);
+      const result = await serviceManager.mcpHub.readResource(server_name, uri, request_options);
       res.json({
         result,
         timestamp: new Date().toISOString(),

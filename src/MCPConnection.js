@@ -38,6 +38,9 @@ const ConnectionStatus = {
   DISABLED: "disabled"
 };
 
+//When a server is being installed for the first time, it might takes some time to install the dependencies
+const CLIENT_CONNECT_TIMEOUT = 5 * 60000 //5 minutes
+
 
 export class MCPConnection extends EventEmitter {
   constructor(name, config, marketplace, hubServerUrl) {
@@ -144,14 +147,18 @@ export class MCPConnection extends EventEmitter {
         if (this.transportType === 'stdio') {
           this.transport = await this._createStdioTransport();
           this.client = this._createClient();
-          await this.client.connect(this.transport);
+          await this.client.connect(this.transport, {
+            timeout: CLIENT_CONNECT_TIMEOUT
+          });
         } else {
           //First try the new http transport with fallback to deprecated sse transport
           try {
             this.authProvider = this._createOAuthProvider()
             this.transport = this._createStreambleHTTPTransport(this.authProvider)
             this.client = this._createClient();
-            await this.client.connect(this.transport);
+            await this.client.connect(this.transport, {
+              timeout: CLIENT_CONNECT_TIMEOUT
+            });
           } catch (httpError) {
             //catches 401 error from http transport
             if (this._isAuthError(httpError)) {
@@ -162,7 +169,9 @@ export class MCPConnection extends EventEmitter {
               this.authProvider = this._createOAuthProvider()
               this.transport = this._createSSETransport(this.authProvider);
               this.client = this._createClient();
-              await this.client.connect(this.transport);
+              await this.client.connect(this.transport, {
+                timeout: CLIENT_CONNECT_TIMEOUT
+              });
             }
           }
         }
@@ -303,7 +312,7 @@ export class MCPConnection extends EventEmitter {
   }
 
 
-  async getPrompt(promptName, args) {
+  async getPrompt(promptName, args, request_options) {
     if (!this.client) {
       throw new ToolError("Server not initialized", {
         server: this.name,
@@ -339,7 +348,7 @@ export class MCPConnection extends EventEmitter {
       return await this.client.getPrompt({
         name: promptName,
         arguments: args,
-      })
+      }, request_options)
     } catch (error) {
       throw wrapError(error, "PROMPT_EXECUTION_ERROR", {
         server: this.name,
@@ -359,7 +368,7 @@ export class MCPConnection extends EventEmitter {
     | Binary Resource     | `{ "content": [{ "type": "resource", "resource": { "uri": "image.jpg", "blob": "base64data...", "mimeType": "image/jpeg" } }], "isError": false }` |
     | Error Case          | `{ "content": [], "isError": true }` (Note: Error details might be in JSON-RPC level) |
     */
-  async callTool(toolName, args) {
+  async callTool(toolName, args, request_options) {
     if (!this.client) {
       throw new ToolError("Server not initialized", {
         server: this.name,
@@ -402,7 +411,8 @@ export class MCPConnection extends EventEmitter {
             arguments: args,
           },
         },
-        CallToolResultSchema
+        CallToolResultSchema,
+        request_options
       );
     } catch (error) {
       throw wrapError(error, "TOOL_EXECUTION_ERROR", {
@@ -423,7 +433,7 @@ export class MCPConnection extends EventEmitter {
     | No Resources (empty)         | `{ "contents": [] }`                                                             |
   */
 
-  async readResource(uri) {
+  async readResource(uri, request_options) {
     if (!this.client) {
       throw new ResourceError("Server not initialized", {
         server: this.name,
@@ -462,7 +472,8 @@ export class MCPConnection extends EventEmitter {
           method: "resources/read",
           params: { uri },
         },
-        ReadResourceResultSchema
+        ReadResourceResultSchema,
+        request_options
       );
     } catch (error) {
       throw wrapError(error, "RESOURCE_READ_ERROR", {

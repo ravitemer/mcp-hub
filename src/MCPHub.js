@@ -321,7 +321,7 @@ export class MCPHub extends EventEmitter {
     );
   }
 
-  async callTool(serverName, toolName, args) {
+  async callTool(serverName, toolName, args, request_options) {
     const connection = this.connections.get(serverName);
     if (!connection) {
       throw new ServerError("Server not found", {
@@ -330,10 +330,10 @@ export class MCPHub extends EventEmitter {
         tool: toolName,
       });
     }
-    return await connection.callTool(toolName, args);
+    return await connection.callTool(toolName, args, request_options);
   }
 
-  async readResource(serverName, uri) {
+  async readResource(serverName, uri, request_options) {
     const connection = this.connections.get(serverName);
     if (!connection) {
       throw new ServerError("Server not found", {
@@ -342,10 +342,10 @@ export class MCPHub extends EventEmitter {
         uri,
       });
     }
-    return await connection.readResource(uri);
+    return await connection.readResource(uri, request_options);
   }
 
-  async getPrompt(serverName, promtName, args) {
+  async getPrompt(serverName, promtName, args, request_options) {
     const connection = this.connections.get(serverName);
     if (!connection) {
       throw new ServerError("Server not found", {
@@ -354,7 +354,7 @@ export class MCPHub extends EventEmitter {
         prompt: promtName,
       });
     }
-    return await connection.getPrompt(promtName, args);
+    return await connection.getPrompt(promtName, args, request_options);
   }
 
   async refreshServer(name) {
