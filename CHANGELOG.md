@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [3.2.0] - 2025-05-24
+
+### Added
+- /tools, /resources, /prompts endpoints accept request_options in the body which will be used when calling tools, resources and prompts. 
+
 ## [3.1.11] - 2025-05-16
 
 ### Fixed

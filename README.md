@@ -466,7 +466,8 @@ Content-Type: application/json
 {
   "server_name": "example-server",
   "tool": "tool_name",
-  "arguments": {}
+  "arguments": {},
+  "request_options" : {}
 }
 ```
 
@@ -478,7 +479,8 @@ Content-Type: application/json
 
 {
   "server_name": "example-server",
-  "uri": "resource://uri"
+  "uri": "resource://uri",
+  "request_options" : {}
 }
 ```
 
@@ -491,7 +493,8 @@ Content-Type: application/json
 {
   "server_name": "example-server",
   "prompt": "prompt_name",
-  "arguments": {}
+  "arguments": {},
+  "request_options" : {}
 }
 ```
 
