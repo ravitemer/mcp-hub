@@ -36,6 +36,8 @@ MCP Hub acts as a central coordinator between clients and multiple MCP servers, 
 | | Capability Updates | ✅ | Automatic refresh |
 | | Event Streaming to clients | ✅ | SSE-based |
 | | Auto Reconnection | ✅ | With backoff |
+| **Development** ||||
+| | Hot Reload | ✅ | Auto restart a MCP server on file changes with `dev` mode |
 
 ## Key Features
 
@@ -130,8 +132,12 @@ MCP Hub uses a JSON configuration file to define managed servers:
         "OP_KEY": "$: cmd:op read read op://example/secret", // use $: at the beginning to indicate that this is a command
         "AUTH_HEADER": "Bearer ${ACCESS_TOKEN}", // Placeholders will be replaced with values from the env object itself and falling back to process.env
         "SECRET": "secret" // Uses "secret"
-
       },
+      "dev": {
+        "enabled": true,
+        "watch": ["src/**/*.js", "**/*.json"],
+        "cwd": "/absolute/path/to/server/directory"
+      }
     },
     "remote-server": {
       "url": "https://api.example.com/mcp",
@@ -154,6 +160,10 @@ For running script-based MCP servers locally:
 - **command**: Command to start the MCP server executable
 - **args**: Array of command line arguments (arguments starting with `$` will be replaced with env values if available)
 - **env**: Environment variables with system fallback if value is empty/null
+- **dev**: Development mode configuration (optional)
+  - **enabled**: Enable/disable dev mode (default: true)
+  - **watch**: Array of glob patterns to watch for changes (default: ["**/*.js", "**/*.ts", "**/*.json"])
+  - **cwd**: **Required** absolute path to the server's working directory for file watching
 
 #### Remote Server Options
 
@@ -933,3 +943,5 @@ All client requests follow a standardized flow:
 ## Acknowledgements
 
 - [Cline mcp-marketplace](https://github.com/cline/mcp-marketplace) - For providing the MCP server marketplace endpoints that power MCP Hub's marketplace integration
+
+

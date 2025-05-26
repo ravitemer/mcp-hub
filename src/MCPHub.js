@@ -76,6 +76,14 @@ export class MCPHub extends EventEmitter {
           });
         });
 
+        // Setup dev event handlers
+        connection.on("devServerRestarting", (data) => {
+          this.emit("devServerRestarting", data);
+        });
+        connection.on("devServerRestarted", (data) => {
+          this.emit("devServerRestarted", data);
+        });
+
         this.connections.set(name, connection);
         await connection.connect();
 
@@ -405,3 +413,4 @@ export class MCPHub extends EventEmitter {
 }
 
 export { MCPConnection } from "./MCPConnection.js";
+

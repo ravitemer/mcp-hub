@@ -29,6 +29,7 @@ import {
   ResourceError,
   wrapError,
 } from "./utils/errors.js";
+import { DevWatcher } from "./utils/dev-watcher.js";
 
 const ConnectionStatus = {
   CONNECTED: "connected",
@@ -51,6 +52,9 @@ export class MCPConnection extends EventEmitter {
     this.authProvider = null;
     this.authCallback = null;
     this.authCode = null;
+
+    // Dev watcher for file changes (stdio servers only)
+    this.devWatcher = null;
 
     // Set display name from marketplace
     this.displayName = name; // Default to mcpId
@@ -84,7 +88,13 @@ export class MCPConnection extends EventEmitter {
     this.lastStarted = null;
     this.disabled = config.disabled || false;
     this.authorizationUrl = null;
-    this.hubServerUrl = hubServerUrl
+    this.hubServerUrl = hubServerUrl;
+
+    // Initialize dev watcher for stdio servers with dev config
+    if (this.transportType === 'stdio' && config.dev) {
+      this.devWatcher = new DevWatcher(this.name, config.dev);
+      this.devWatcher.on('filesChanged', (data) => this.#handleDevFilesChanged(data));
+    }
   }
 
   async start() {
@@ -196,6 +206,11 @@ export class MCPConnection extends EventEmitter {
       this.status = ConnectionStatus.CONNECTED;
       this.startTime = Date.now();
       this.error = null;
+
+      // Start dev watcher if configured
+      if (this.devWatcher) {
+        await this.devWatcher.start(this.config.dev);
+      }
 
       logger.info(`'${this.name}' MCP server connected`);
     } catch (error) {
@@ -503,6 +518,12 @@ export class MCPConnection extends EventEmitter {
 
   async disconnect(error) {
     this.removeNotificationHandlers();
+
+    // Stop dev watcher
+    if (this.devWatcher) {
+      await this.devWatcher.stop();
+    }
+
     if (this.transport) {
       // First try to terminate the session gracefully
       if (this.transport.sessionId) {
@@ -795,4 +816,69 @@ export class MCPConnection extends EventEmitter {
       logger.warn(`No authorization URL available for server '${this.name}'`);
     }
   }
+
+  async #handleDevFilesChanged(data) {
+    try {
+      logger.debug(`Dev file changes detected, restarting server '${this.name}'`)
+
+      // Emit dev restart starting event
+      this.emit('devServerRestarting', {
+        changes: { modified: [this.name] },
+        reason: 'dev_file_change',
+        files: data.relativeFiles,
+        timestamp: data.timestamp,
+      });
+      // Perform restart
+      await this.restartForDev();
+      // Emit dev restart completed event
+      this.emit('devServerRestarted', {
+        changes: { modified: [this.name] },
+        reason: 'dev_file_change',
+        files: data.relativeFiles,
+        timestamp: new Date().toISOString(),
+        newCapabilities: this.getServerInfo().capabilities,
+      });
+      logger.debug(`Dev restart completed for server '${this.name}'`);
+    } catch (error) {
+      logger.error(
+        'DEV_RESTART_ERROR',
+        `Failed to restart server '${this.name}' after file changes: ${error.message}`,
+        {
+          server: this.name,
+          files: data.relativeFiles,
+          error: error.message,
+        },
+        false
+      );
+      // Still emit the completed event with error info
+      this.emit('devServerRestarted', {
+        changes: { modified: [this.name] },
+        reason: 'dev_file_change',
+        files: data.relativeFiles,
+        timestamp: new Date().toISOString(),
+        error: error.message,
+      });
+    }
+  }
+
+  async restartForDev() {
+    // Store current config and dev watcher before reset
+    const currentConfig = this.config;
+    const devWatcher = this.devWatcher; // Preserve dev watcher
+    // Disconnect current connection (but keep dev watcher running)
+    this.removeNotificationHandlers();
+    if (this.transport) {
+      await this.transport.close();
+    }
+    // Reset connection state using resetState
+    await this.resetState();
+    // Restore dev watcher and set connecting status
+    this.devWatcher = devWatcher;
+    this.status = ConnectionStatus.CONNECTING;
+    // Reconnect with same config
+    await this.connect(currentConfig);
+  }
 }
+
+
+

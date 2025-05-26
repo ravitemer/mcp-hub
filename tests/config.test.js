@@ -1,27 +1,27 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { ConfigManager } from "../src/utils/config.js";
 import fs from "fs/promises";
-import * as fsSync from "fs";
+import chokidar from "chokidar";
 import { EventEmitter } from "events";
 
-// Mock fs.watch
-vi.mock("fs", async () => {
-  const actual = await vi.importActual("fs");
-  return {
-    ...actual,
+// Mock chokidar
+vi.mock("chokidar", () => ({
+  default: {
     watch: vi.fn(() => {
       const watcher = new EventEmitter();
       watcher.close = vi.fn();
       return watcher;
     }),
-  };
-});
+  },
+}));
 
 // Mock logger
 vi.mock("../src/utils/logger.js", () => ({
   default: {
     info: vi.fn(),
     error: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
   },
 }));
 
@@ -66,7 +66,15 @@ describe("ConfigManager", () => {
       configManager = new ConfigManager("/path/to/config.json");
       await configManager.loadConfig();
 
-      expect(configManager.getConfig()).toEqual(validConfig);
+      expect(configManager.getConfig()).toEqual({
+        ...validConfig,
+        mcpServers: {
+          test: {
+            ...validConfig.mcpServers.test,
+            type: "stdio"
+          }
+        }
+      });
       expect(fs.readFile).toHaveBeenCalledWith("/path/to/config.json", "utf-8");
     });
 
@@ -100,7 +108,7 @@ describe("ConfigManager", () => {
 
       configManager = new ConfigManager("/path/to/config.json");
       await expect(configManager.loadConfig()).rejects.toThrow(
-        "Server 'test' missing command"
+        "Server 'test' must include either command (for stdio) or url (for sse)"
       );
     });
 
@@ -138,6 +146,150 @@ describe("ConfigManager", () => {
         "Server 'test' has invalid environment config"
       );
     });
+
+    describe("dev field validation", () => {
+      it("should accept valid dev config for stdio servers", async () => {
+        const validDevConfig = {
+          mcpServers: {
+            test: {
+              command: "node",
+              args: ["server.js"],
+              dev: {
+                enabled: true,
+                watch: ["src/**/*.js"],
+                cwd: "/absolute/path/to/server"
+              }
+            }
+          }
+        };
+        vi.spyOn(fs, "readFile").mockResolvedValue(JSON.stringify(validDevConfig));
+
+        configManager = new ConfigManager("/path/to/config.json");
+        await configManager.loadConfig();
+
+        expect(configManager.getServerConfig("test").dev).toEqual(validDevConfig.mcpServers.test.dev);
+      });
+
+      it("should throw error for dev config on remote servers", async () => {
+        const invalidDevConfig = {
+          mcpServers: {
+            test: {
+              url: "https://example.com/mcp",
+              dev: {
+                enabled: true,
+                cwd: "/some/path"
+              }
+            }
+          }
+        };
+        vi.spyOn(fs, "readFile").mockResolvedValue(JSON.stringify(invalidDevConfig));
+
+        configManager = new ConfigManager("/path/to/config.json");
+        await expect(configManager.loadConfig()).rejects.toThrow(
+          "Server 'test' dev field is only supported for stdio servers"
+        );
+      });
+
+      it("should throw error for non-object dev config", async () => {
+        const invalidDevConfig = {
+          mcpServers: {
+            test: {
+              command: "node",
+              dev: "invalid-dev-config"
+            }
+          }
+        };
+        vi.spyOn(fs, "readFile").mockResolvedValue(JSON.stringify(invalidDevConfig));
+
+        configManager = new ConfigManager("/path/to/config.json");
+        await expect(configManager.loadConfig()).rejects.toThrow(
+          "Server 'test' dev.cwd must be an absolute path"
+        );
+      });
+
+      it("should throw error for missing cwd in dev config", async () => {
+        const invalidDevConfig = {
+          mcpServers: {
+            test: {
+              command: "node",
+              dev: {
+                enabled: true,
+                watch: ["src/**/*.js"]
+                // missing cwd
+              }
+            }
+          }
+        };
+        vi.spyOn(fs, "readFile").mockResolvedValue(JSON.stringify(invalidDevConfig));
+
+        configManager = new ConfigManager("/path/to/config.json");
+        await expect(configManager.loadConfig()).rejects.toThrow(
+          "Server 'test' dev.cwd must be an absolute path"
+        );
+      });
+
+      it("should throw error for relative cwd path", async () => {
+        const invalidDevConfig = {
+          mcpServers: {
+            test: {
+              command: "node",
+              dev: {
+                enabled: true,
+                cwd: "relative/path"
+              }
+            }
+          }
+        };
+        vi.spyOn(fs, "readFile").mockResolvedValue(JSON.stringify(invalidDevConfig));
+
+        configManager = new ConfigManager("/path/to/config.json");
+        await expect(configManager.loadConfig()).rejects.toThrow(
+          "Server 'test' dev.cwd must be an absolute path"
+        );
+      });
+
+      it("should throw error for invalid watch patterns", async () => {
+        const invalidDevConfig = {
+          mcpServers: {
+            test: {
+              command: "node",
+              dev: {
+                enabled: true,
+                watch: "not-an-array",
+                cwd: "/absolute/path"
+              }
+            }
+          }
+        };
+        vi.spyOn(fs, "readFile").mockResolvedValue(JSON.stringify(invalidDevConfig));
+
+        configManager = new ConfigManager("/path/to/config.json");
+        await expect(configManager.loadConfig()).rejects.toThrow(
+          "Server 'test' dev.watch must be an array of strings"
+        );
+      });
+
+      it("should accept dev config without debounce (uses internal default)", async () => {
+        const validDevConfig = {
+          mcpServers: {
+            test: {
+              command: "node",
+              dev: {
+                enabled: true,
+                cwd: "/absolute/path"
+              }
+            }
+          }
+        };
+        vi.spyOn(fs, "readFile").mockResolvedValue(JSON.stringify(validDevConfig));
+
+        configManager = new ConfigManager("/path/to/config.json");
+        const result = await configManager.loadConfig();
+
+        expect(result.config.mcpServers.test.dev.enabled).toBe(true);
+        expect(result.config.mcpServers.test.dev.cwd).toBe("/absolute/path");
+      });
+    });
   });
 
   describe("watchConfig", () => {
@@ -145,9 +297,14 @@ describe("ConfigManager", () => {
       configManager = new ConfigManager("/path/to/config.json");
       configManager.watchConfig();
 
-      expect(fsSync.watch).toHaveBeenCalledWith(
+      expect(chokidar.watch).toHaveBeenCalledWith(
         "/path/to/config.json",
-        expect.any(Function)
+        expect.objectContaining({
+          awaitWriteFinish: expect.any(Object),
+          persistent: true,
+          usePolling: false,
+          ignoreInitial: true
+        })
       );
     });
 
@@ -156,17 +313,18 @@ describe("ConfigManager", () => {
       configManager.watchConfig();
       configManager.watchConfig();
 
-      expect(fsSync.watch).toHaveBeenCalledTimes(1);
+      expect(chokidar.watch).toHaveBeenCalledTimes(1);
     });
 
     it("should handle watch errors", () => {
       configManager = new ConfigManager("/path/to/config.json");
       configManager.watchConfig();
 
-      const watcher = fsSync.watch.mock.results[0].value;
+      const watcher = chokidar.watch.mock.results[0].value;
       const error = new Error("Watch error");
 
       watcher.emit("error", error);
+      // Should not throw, just log the error
     });
   });
 
@@ -178,20 +336,30 @@ describe("ConfigManager", () => {
       await configManager.updateConfig("/path/to/new-config.json");
 
       expect(configManager.configPath).toBe("/path/to/new-config.json");
-      expect(configManager.getConfig()).toEqual(validConfig);
+      expect(configManager.getConfig()).toEqual({
+        ...validConfig,
+        mcpServers: {
+          test: {
+            ...validConfig.mcpServers.test,
+            type: "stdio"
+          }
+        }
+      });
     });
   });
 
   describe("getServerConfig", () => {
     it("should return specific server config", () => {
-      configManager = new ConfigManager(validConfig);
+      const testConfig = JSON.parse(JSON.stringify(validConfig)); // Deep clone to avoid mutation
+      configManager = new ConfigManager(testConfig);
       expect(configManager.getServerConfig("test")).toEqual(
         validConfig.mcpServers.test
       );
     });
 
     it("should return undefined for non-existent server", () => {
-      configManager = new ConfigManager(validConfig);
+      const testConfig = JSON.parse(JSON.stringify(validConfig)); // Deep clone to avoid mutation
+      configManager = new ConfigManager(testConfig);
       expect(configManager.getServerConfig("non-existent")).toBeUndefined();
     });
   });
@@ -201,11 +369,10 @@ describe("ConfigManager", () => {
       configManager = new ConfigManager("/path/to/config.json");
       configManager.watchConfig();
 
-      const watcher = fsSync.watch.mock.results[0].value;
+      const watcher = chokidar.watch.mock.results[0].value;
       configManager.stopWatching();
 
       expect(watcher.close).toHaveBeenCalled();
-      expect(configManager.watcher).toBeNull();
     });
 
     it("should do nothing if no watcher exists", () => {

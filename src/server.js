@@ -128,6 +128,14 @@ class ServiceManager {
       this.broadcastSubscriptionEvent(SubscriptionTypes.PROMPT_LIST_CHANGED, data)
     });
 
+    // Dev mode event handlers
+    this.mcpHub.on("devServerRestarting", (data) => {
+      this.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATING, data);
+    });
+    this.mcpHub.on("devServerRestarted", (data) => {
+      this.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, data);
+    });
+
     await this.mcpHub.initialize();
     this.setState(HubState.READY)
   }
@@ -788,3 +796,4 @@ export async function startServer(options = {}) {
 }
 
 export default app;
+

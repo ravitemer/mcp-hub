@@ -1,12 +1,13 @@
 import fs from "fs/promises";
 import chokidar from "chokidar";
 import { EventEmitter } from "events";
+import path from "path";
 import logger from "./logger.js";
 import { ConfigError, wrapError } from "./errors.js";
 import deepEqual from "fast-deep-equal";
 export class ConfigManager extends EventEmitter {
   // Key fields to compare for server config changes
-  #KEY_FIELDS = ['command', 'args', 'env', 'disabled', 'url', 'headers'];
+  #KEY_FIELDS = ['command', 'args', 'env', 'disabled', 'url', 'headers', 'dev'];
   #previousConfig = null;
   #watcher = null;
 
@@ -55,7 +56,7 @@ export class ConfigManager extends EventEmitter {
           if (!oldServers[name].hasOwnProperty(field) || !newConfig.hasOwnProperty(field)) {
             return true;
           }
-          if (field === 'args' || field === 'env' || field === 'headers') {
+          if (field === 'args' || field === 'env' || field === 'headers' || field === 'dev') {
             return !deepEqual(oldServers[name][field], newConfig[field]);
           }
           return oldServers[name][field] !== newConfig[field];
@@ -178,6 +179,21 @@ export class ConfigManager extends EventEmitter {
               config: server,
             }
           );
+        }
+
+        // Validate dev field (only for stdio servers)
+        if (server.dev !== undefined) {
+          if (!hasStdioFields) {
+            throw new ConfigError(
+              `Server '${name}' dev field is only supported for stdio servers`,
+              {
+                server: name,
+                config: server,
+              }
+            );
+          }
+          // Validate dev configuration
+          this.#validateDevConfig(name, server.dev);
         }
       }
       // Calculate changes from previous config
@@ -321,5 +337,19 @@ export class ConfigManager extends EventEmitter {
 
   getServerConfig(serverName) {
     return this.config?.mcpServers?.[serverName];
+  }
+
+  #validateDevConfig(serverName, devConfig = {}) {
+    if (devConfig.enabled !== undefined && typeof devConfig.enabled !== "boolean") {
+      throw new ConfigError(`Server '${serverName}' dev.enabled must be a boolean`);
+    }
+
+    if (devConfig.watch !== undefined && (!Array.isArray(devConfig.watch) || !devConfig.watch.every(p => typeof p === "string"))) {
+      throw new ConfigError(`Server '${serverName}' dev.watch must be an array of strings`);
+    }
+
+    if (!devConfig.cwd || typeof devConfig.cwd !== "string" || !path.isAbsolute(devConfig.cwd)) {
+      throw new ConfigError(`Server '${serverName}' dev.cwd must be an absolute path`);
+    }
   }
 }
