@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] - 2025-05-30
+
+### Fixed
+- Use correct constant name `TOOL_LIST_CHANGED` instead of `TOOLS_CHANGED` for tool list subscription events
+
 ## [3.3.0] - 2025-05-26
 
 ### Added
@@ -369,4 +374,5 @@ frequent startups
 - API documentation
 - Example implementations
 - Test suite with high coverage
+
 
