@@ -117,7 +117,7 @@ class ServiceManager {
 
     // Server-specific events
     this.mcpHub.on("toolsChanged", (data) => {
-      this.broadcastSubscriptionEvent(SubscriptionTypes.TOOLS_CHANGED, data)
+      this.broadcastSubscriptionEvent(SubscriptionTypes.TOOL_LIST_CHANGED, data)
     });
 
     this.mcpHub.on("resourcesChanged", (data) => {
