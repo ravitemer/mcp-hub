@@ -78,10 +78,10 @@ git tag -a "v${CURRENT_VERSION}" -m "v${CURRENT_VERSION}"
 if [ -f CHANGELOG.md ]; then
     # Extract content between current version header and the next header
     RELEASE_NOTES=$(awk -v ver="## [${CURRENT_VERSION}]" '
-        $0 ~ ver {p=1;next}
-        /^## \[/ {p=0}
+        $0 ~ ver {p=1; next}
+        /^## \[/ && p {exit}
         p {print}
-    ' CHANGELOG.md | sed '/^$/d')
+    ' CHANGELOG.md)
     
     if [ -z "$RELEASE_NOTES" ]; then
         RELEASE_NOTES="Release version ${CURRENT_VERSION}"
