@@ -1,8 +1,79 @@
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { promisify } from "util";
+import { exec as execCb } from "child_process";
 import logger from "./utils/logger.js";
 import { MCPHubError } from "./utils/errors.js";
+
+const exec = promisify(execCb);
+
+/**
+ * Check if curl is available and execute curl command
+ * @param {string} url - URL to fetch
+ * @param {Object} options - Fetch options
+ * @returns {Promise<{ok: boolean, status: number, json: () => Promise<any>}>}
+ */
+async function executeCurl(url, options = {}) {
+  try {
+    // Check if curl exists
+    await exec('curl --version');
+
+    // Base command with silent mode
+    let curlCmd = ['curl', '-s'];
+
+    if (options.method === 'POST') {
+      curlCmd.push('-X', 'POST');
+    }
+
+    if (options.headers) {
+      Object.entries(options.headers).forEach(([key, value]) => {
+        curlCmd.push('-H', `"${key}: ${value}"`);
+      });
+    }
+
+    if (options.body) {
+      // Handle body data properly
+      const processedBody = typeof options.body === 'string' ?
+        options.body :
+        JSON.stringify(options.body);
+      curlCmd.push('-d', `'${processedBody}'`);
+    }
+
+    curlCmd.push(url);
+
+    const { stdout } = await exec(curlCmd.join(' '));
+
+    // If we get output, try to parse it as JSON
+    if (stdout) {
+      return {
+        ok: true,  // Since we got a response
+        status: 200,
+        json: async () => JSON.parse(stdout)
+      };
+    }
+
+    throw new Error('No response from curl');
+  } catch (error) {
+    throw new MarketplaceError('Failed to execute curl command', {
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Fetch with curl fallback
+ * @param {string} url - URL to fetch
+ * @param {Object} options - Fetch options
+ */
+async function fetchWithFallback(url, options = {}) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    logger.warn("Fetch failed, falling back to curl", { error: error.message });
+    return await executeCurl(url, options);
+  }
+}
 
 //TODO: implement sort of custom database for reliability instead of using cline mcp-marketplace
 const API_BASE_URL = "https://api.cline.bot/v1/mcp";
@@ -210,7 +281,7 @@ export class Marketplace {
   async fetchCatalog() {
     try {
       logger.debug("Fetching marketplace catalog");
-      const response = await fetch(`${API_BASE_URL}/marketplace`);
+      const response = await fetchWithFallback(`${API_BASE_URL}/marketplace`);
 
       if (!response.ok) {
         logger.warn("Failed to fetch catalog from API, using cache", {
@@ -253,7 +324,7 @@ export class Marketplace {
   async fetchServerDetails(mcpId) {
     try {
       logger.debug("Fetching server details", { mcpId });
-      const response = await fetch(`${API_BASE_URL}/download`, {
+      const response = await fetchWithFallback(`${API_BASE_URL}/download`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -270,7 +341,7 @@ export class Marketplace {
       }
 
       const data = await response.json();
-      if (!data?.githubUrl || !data?.readmeContent) {
+      if (!data?.githubUrl) {
         logger.warn(
           "Invalid API response format for server details, using cache",
           {
@@ -400,3 +471,5 @@ export function getMarketplace(ttl = DEFAULT_TTL) {
   }
   return instance;
 }
+
+

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.5] - 2025-06-05
+
+### Fixed
+- Fetching marketplace data fails with proxy or vpn using node fetch. Uses curl as fallback
+- Don't throw error if reamdeContent is empty
+
 ## [3.3.4] - 2025-06-05
 
 ### Added
