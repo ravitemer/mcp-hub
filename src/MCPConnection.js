@@ -72,7 +72,6 @@ export class MCPConnection extends EventEmitter {
         });
       }
     }
-
     this.config = config;
     this.description = config.description ? config.description : serverDescription
     this.client = null;
@@ -140,6 +139,9 @@ export class MCPConnection extends EventEmitter {
     try {
       if (config) {
         this.config = config
+      }
+      if (this.config?.name) {
+        this.displayName = this.config.name
       }
       if (this.disabled) {
         this.status = ConnectionStatus.DISABLED;

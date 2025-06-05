@@ -7,7 +7,7 @@ import { ConfigError, wrapError } from "./errors.js";
 import deepEqual from "fast-deep-equal";
 export class ConfigManager extends EventEmitter {
   // Key fields to compare for server config changes
-  #KEY_FIELDS = ['command', 'args', 'env', 'disabled', 'url', 'headers', 'dev'];
+  #KEY_FIELDS = ['command', 'args', 'env', 'disabled', 'url', 'headers', 'dev', 'name'];
   #previousConfig = null;
   #watcher = null;
 
