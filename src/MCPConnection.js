@@ -30,6 +30,7 @@ import {
   wrapError,
 } from "./utils/errors.js";
 import { DevWatcher } from "./utils/dev-watcher.js";
+import { envResolver } from "./utils/env-resolver.js";
 
 const ConnectionStatus = {
   CONNECTED: "connected",
@@ -166,7 +167,7 @@ export class MCPConnection extends EventEmitter {
           //First try the new http transport with fallback to deprecated sse transport
           try {
             this.authProvider = this._createOAuthProvider()
-            this.transport = this._createStreambleHTTPTransport(this.authProvider)
+            this.transport = await this._createStreambleHTTPTransport(this.authProvider)
             this.client = this._createClient();
             await this.client.connect(this.transport, {
               timeout: CLIENT_CONNECT_TIMEOUT
@@ -179,7 +180,7 @@ export class MCPConnection extends EventEmitter {
             } else {
               logger.debug(`'${this.name}' streamable-http error: ${httpError.message}. Falling back to SSE transport`);
               this.authProvider = this._createOAuthProvider()
-              this.transport = this._createSSETransport(this.authProvider);
+              this.transport = await this._createSSETransport(this.authProvider);
               this.client = this._createClient();
               await this.client.connect(this.transport, {
                 timeout: CLIENT_CONNECT_TIMEOUT
@@ -603,99 +604,22 @@ export class MCPConnection extends EventEmitter {
   }
 
   async _createStdioTransport() {
-    const env = this.config.env || {};
-    const resolvedEnv = {};
+    // Resolve all placeholders in config using centralized resolver
+    const resolvedConfig = await envResolver.resolveConfig(this.config, [
+      'env', 'args', 'command'
+    ]);
 
-    // First pass: Execute commands for vars starting with "$:"
-    for (const [key, value] of Object.entries(env)) {
-      if (typeof value === 'string' && value.startsWith('$:')) {
-        try {
-          // Extract command after "$:"
-          const command = value.slice(2).trim();
-          logger.debug(`Executing command for ${key}`)
-
-          // Execute command and capture output
-          const { exec } = await import('child_process');
-          const { promisify } = await import('util');
-          const execPromise = promisify(exec);
-
-          const { stdout } = await execPromise(command);
-          // Store trimmed output
-          resolvedEnv[key] = stdout.trim();
-
-          logger.debug(`Successfully resolved command for ${key}`)
-        } catch (error) {
-          logger.warn(`Failed to execute command for ${key}: ${error.message}`);
-          resolvedEnv[key] = env[key]; // Keep original value on error
-        }
-      }
-    }
-    // Process env keys in multiple passes to handle forward references
-    let unresolved = Object.keys(env);
-    let passCount = 0;
-    const maxPasses = 10; // Prevent infinite loops for circular dependencies
-
-    while (unresolved.length > 0 && passCount < maxPasses) {
-      const nextUnresolved = [];
-      unresolved.forEach((key) => {
-        if (resolvedEnv[key]) {
-          return
-        }
-        let value = env[key];
-        if (typeof value === 'string' && value.match(/\${[^}]+}/)) {
-          // Replace ${VARIABLE} placeholders
-          const newValue = value.replace(/\${([^}]+)}/g, (match, varName) => {
-            // Check resolvedEnv first, then env, then process.env
-            if (resolvedEnv[varName]) {
-              return resolvedEnv[varName];
-            } else if (env[varName]) {
-              return env[varName];
-            } else if (process.env[varName]) {
-              return process.env[varName];
-            }
-            return match; // Retain placeholder if unresolved
-          });
-          if (newValue.match(/\${[^}]+}/)) {
-            // If placeholders remain, defer to next pass
-            nextUnresolved.push(key);
-          } else {
-            // No unresolved placeholders, store result
-            resolvedEnv[key] = newValue ? newValue : process.env[key];
-          }
-        } else {
-          // No placeholders, store result
-          resolvedEnv[key] = value ? value : process.env[key];
-        }
-      });
-      unresolved = nextUnresolved;
-      passCount++;
-    }
-
-    // Check for unresolved placeholders and keep them as is
-    if (unresolved.length > 0) {
-      logger.error("UNRESOLVED_ENV", `${this.name}: Unresolvable or circular dependencies detected in env while replacing \${} fields: ${unresolved.join(', ')}. Falling back to placeholder value`, {}, false);
-      unresolved.forEach((key) => {
-        resolvedEnv[key] = env[key]; // Keep unresolved as is
-      });
-    }
     // Build serverEnv with resolved values
     const serverEnv = {
       // INFO: getDefaultEnvironment is imp in order to start mcp servers properly
       ...getDefaultEnvironment(),
       ...(process.env.MCP_ENV_VARS ? JSON.parse(process.env.MCP_ENV_VARS) : {}),
-      ...resolvedEnv,
+      ...resolvedConfig.env,
     };
-    // Default to STDIO transport
+
     const transport = new StdioClientTransport({
-      command: this.config.command,
-      args: (this.config.args || []).map(arg => {
-        // If arg starts with $, replace it with the value from serverEnv, fallback to process.env
-        if (arg.startsWith('$')) {
-          const envKey = arg.substring(1);
-          return serverEnv[envKey] || process.env[envKey] || arg;
-        }
-        return arg;
-      }),
+      command: resolvedConfig.command, // Now supports ${} placeholders too!
+      args: resolvedConfig.args,       // Supports both ${} and legacy $VAR
       env: serverEnv,
       stderr: 'pipe',
     });
@@ -705,52 +629,41 @@ export class MCPConnection extends EventEmitter {
     if (stderrStream) {
       stderrStream.on("data", (data) => {
         const errorOutput = data.toString().trim();
-        // const error = new ConnectionError("Server error output", {
-        //   server: this.name,
-        //   error: errorOutput,
-        // });
         logger.warn(`${this.name} stderr: ${errorOutput}`)
-        // this.error = errorOutput;
       });
     }
     return transport
   }
 
-  _resolveHeaders(headers = {}) {
-    const resolvedHeaders = {};
 
-    // Process headers, replacing ${VARIABLE} placeholders with process.env values
-    Object.keys(headers).forEach((key) => {
-      let value = headers[key];
-      if (typeof value === 'string' && value.match(/\${[^}]+}/)) {
-        value = value.replace(/\${([^}]+)}/g, (match, varName) => {
-          // Replace with process.env value or retain placeholder if undefined
-          return process.env[varName] !== undefined ? process.env[varName] : match;
-        });
-      }
-      resolvedHeaders[key] = value;
-    });
-    return resolvedHeaders
-  }
+  async _createStreambleHTTPTransport(authProvider) {
+    // Resolve URL and headers with EnvResolver
+    const resolvedConfig = await envResolver.resolveConfig(this.config, [
+      'url', 'headers'
+    ]);
 
-  _createStreambleHTTPTransport(authProvider) {
     const options = {
       authProvider,
       requestInit: {
-        headers: this._resolveHeaders(this.config.headers),
+        headers: resolvedConfig.headers, // Already resolved with commands support
       },
       // reconnectionOptions?: StreamableHTTPReconnectionOptions
       // sessionId?: string;
     }
-    const transport = new StreamableHTTPClientTransport(new URL(this.config.url), options);
+    const transport = new StreamableHTTPClientTransport(new URL(resolvedConfig.url), options);
     return transport
   }
 
-  _createSSETransport(authProvider) {
+  async _createSSETransport(authProvider) {
+    // Resolve URL and headers with EnvResolver
+    const resolvedConfig = await envResolver.resolveConfig(this.config, [
+      'url', 'headers'
+    ]);
+
     // SSE transport setup with reconnection support
     const reconnectingEventSourceOptions = {
       max_retry_time: 5000, // Maximum time between retries (5 seconds)
-      // withCredentials: this.config.headers?.["Authorization"] ? true : false,
+      // withCredentials: resolvedConfig.headers?.["Authorization"] ? true : false,
     };
 
     //HACK: sending reconnectingEventSourceOptions in the SSEClientTransport needs us to create custom fetch function with headers created from authProvider tokens. This way we can use ReconnectingEventSource with necessary options
@@ -764,9 +677,9 @@ export class MCPConnection extends EventEmitter {
     }
     // Use ReconnectingEventSource for automatic reconnection
     global.EventSource = ReconnectingES
-    const transport = new SSEClientTransport(new URL(this.config.url), {
+    const transport = new SSEClientTransport(new URL(resolvedConfig.url), {
       requestInit: {
-        headers: this._resolveHeaders(this.config.headers),
+        headers: resolvedConfig.headers, // Already resolved with commands support
       },
       authProvider,
       // INFO:: giving eventSourceInit leading to infinite loop, not needed anymore with global ReconnectingES
