@@ -38,6 +38,8 @@ MCP Hub acts as a central coordinator between clients and multiple MCP servers, 
 | | Auto Reconnection | ✅ | With backoff |
 | **Development** ||||
 | | Hot Reload | ✅ | Auto restart a MCP server on file changes with `dev` mode |
+| **Configuration** ||||
+| | `${}` Syntax | ✅ | Environment variables and command execution across all fields |
 
 ## Key Features
 
@@ -119,47 +121,70 @@ Options:
 
 ## Configuration
 
-MCP Hub uses a JSON configuration file to define managed servers:
+MCP Hub uses a JSON configuration file to define managed servers with **universal `${}` placeholder syntax** for environment variables and command execution.
 
-```js
+### Universal Placeholder Syntax
+
+- **`${ENV_VAR}`** - Resolves environment variables
+- **`${cmd: command args}`** - Executes commands and uses output
+- **`null` or `""`** - Falls back to `process.env`
+
+### Configuration Examples
+
+#### Local STDIO Server
+```json
 {
   "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["arg1", "$ACCESS_TOKEN"], //$ACCESS_TOKEN is replaced with ACCESS_TOKEN from env field
+    "local-server": {
+      "command": "${MCP_BINARY_PATH}/server",
+      "args": [
+        "--token", "${API_TOKEN}",
+        "--database", "${DB_URL}",
+        "--secret", "${cmd: op read op://vault/secret}"
+      ],
       "env": {
-        "ACCESS_TOKEN": null, // Fallback to process.env.ACCESS_TOKEN for null or ""
-        "OP_KEY": "$: cmd:op read read op://example/secret", // use $: at the beginning to indicate that this is a command
-        "AUTH_HEADER": "Bearer ${ACCESS_TOKEN}", // Placeholders will be replaced with values from the env object itself and falling back to process.env
-        "SECRET": "secret" // Uses "secret"
+        "API_TOKEN": "${cmd: aws ssm get-parameter --name /app/token --query Parameter.Value --output text}",
+        "DB_URL": "postgresql://user:${DB_PASSWORD}@localhost/myapp",
+        "DB_PASSWORD": "${cmd: op read op://vault/db/password}",
+        "FALLBACK_VAR": null
       },
       "dev": {
         "enabled": true,
         "watch": ["src/**/*.js", "**/*.json"],
         "cwd": "/absolute/path/to/server/directory"
       }
-    },
-    "remote-server": {
-      "url": "https://api.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer ${EXAMPLE_API_KEY}" // Replaced with env value
-      },
     }
   }
 }
 ```
 
+#### Remote Server
+```json
+{
+  "mcpServers": {
+    "remote-server": {
+      "url": "https://${PRIVATE_DOMAIN}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${cmd: op read op://vault/api/token}",
+        "X-Custom-Header": "${CUSTOM_VALUE}"
+      }
+    }
+  }
+}
+```
+
+
 ### Configuration Options
 
-MCP Hub supports both STDIO servers and remote servers (streamable-http/SSE). The server type is automatically detected from the configuration.
+MCP Hub supports both STDIO servers and remote servers (streamable-http/SSE). The server type is automatically detected from the configuration. **All fields support the universal `${}` placeholder syntax.**
 
 #### STDIO Server Options
 
 For running script-based MCP servers locally:
 
-- **command**: Command to start the MCP server executable
-- **args**: Array of command line arguments (arguments starting with `$` will be replaced with env values if available)
-- **env**: Environment variables with system fallback if value is empty/null
+- **command**: Command to start the MCP server executable (supports `${VARIABLE}` and `${cmd: command}`)
+- **args**: Array of command line arguments (supports `${VARIABLE}` and `${cmd: command}` placeholders)
+- **env**: Environment variables with placeholder resolution and system fallback
 - **dev**: Development mode configuration (optional)
   - **enabled**: Enable/disable dev mode (default: true)
   - **watch**: Array of glob patterns to watch for changes (default: ["**/*.js", "**/*.ts", "**/*.json"])
@@ -169,14 +194,23 @@ For running script-based MCP servers locally:
 
 For connecting to remote MCP servers:
 
-- **url**: Server endpoint URL
-- **headers**: Optional headers for authentication
+- **url**: Server endpoint URL (supports `${VARIABLE}` and `${cmd: command}` placeholders)
+- **headers**: Authentication headers (supports `${VARIABLE}` and `${cmd: command}` placeholders)
+
+#### Server Type Detection
 
 The server type is determined by:
 - STDIO server → Has `command` field
 - Remote server → Has `url` field
 
 Note: A server configuration cannot mix STDIO and remote server fields.
+
+#### Placeholder Resolution Order
+
+1. **Commands First**: `${cmd: command args}` are executed first
+2. **Environment Variables**: `${VAR}` are resolved from `env` object, then `process.env`
+3. **Fallback**: `null` or `""` values fall back to `process.env`
+4. **Multi-pass**: Dependencies between variables are resolved automatically
 
 ## Nix
 

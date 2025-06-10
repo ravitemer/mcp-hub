@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2025-06-10
+
+### Added
+- **Universal `${}` Placeholder Syntax**: Centralized environment variable resolution system
+  - `${ENV_VAR}` for environment variables
+  - `${cmd: command args}` for command execution
+  - Support across all configuration fields: `command`, `args`, `env`, `url`, `headers`
+
+### Deprecated
+- Legacy `$VAR` syntax in args (use `${VAR}` instead)
+- Legacy `$: command` syntax in env (use `${cmd: command}` instead)
+- All deprecated syntax now shows deprecation warnings
+
+### Enhanced
+- Updated documentation with clear examples of new universal syntax
+- Improved configuration section clarity and examples
+
 ## [3.3.5] - 2025-06-05
 
 ### Fixed
