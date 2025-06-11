@@ -15,6 +15,7 @@ export class EnvResolver {
   constructor(options = {}) {
     this.maxPasses = options.maxPasses || 10;
     this.commandTimeout = options.commandTimeout || 30000;
+    this.strict = options.strict !== false; // Default to strict mode
   }
 
   /**
@@ -64,7 +65,11 @@ export class EnvResolver {
           if (arg.startsWith('$') && !arg.startsWith('${')) {
             logger.warn(`DEPRECATED: Legacy argument syntax '$VAR' is deprecated. Use '\${VAR}' instead. Found: ${arg}`);
             const envKey = arg.substring(1);
-            resolvedArgs.push(context[envKey] || arg);
+            const resolvedValue = context[envKey];
+            if (resolvedValue === undefined && this.strict) {
+              throw new Error(`Legacy variable '${envKey}' not found`);
+            }
+            resolvedArgs.push(resolvedValue || arg);
           } else {
             resolvedArgs.push(await this._resolveStringWithPlaceholders(arg, context));
           }
@@ -95,50 +100,23 @@ export class EnvResolver {
   }
 
   /**
-   * Resolve env object with multi-pass resolution for dependencies
+   * Resolve env object - simple single-pass resolution
    */
   async _resolveEnvObject(envConfig, baseContext) {
     const resolved = {};
-    const unresolved = Object.entries(envConfig);
-    let passCount = 0;
 
-    // Create working context that includes both base context and resolved values
-    let workingContext = { ...baseContext };
-
-    while (unresolved.length > 0 && passCount < this.maxPasses) {
-      const stillUnresolved = [];
-      let madeProgress = false;
-
-      for (const [key, value] of unresolved) {
+    for (const [key, value] of Object.entries(envConfig)) {
+      if (value === null || value === '') {
         // Handle null/empty fallback to process.env
-        let valueToResolve = value;
-        if (value === null || value === '') {
-          valueToResolve = baseContext[key] || '';
+        const fallbackValue = baseContext[key];
+        if (fallbackValue === undefined && this.strict) {
+          throw new Error(`Variable '${key}' not found`);
         }
-
-        const resolvedValue = await this._resolveStringWithPlaceholders(valueToResolve, workingContext);
-
-        if (this._hasUnresolvedPlaceholders(resolvedValue)) {
-          stillUnresolved.push([key, value]);
-        } else {
-          resolved[key] = resolvedValue;
-          workingContext[key] = resolvedValue; // Add to working context
-          madeProgress = true;
-        }
+        resolved[key] = fallbackValue || '';
+      } else {
+        // For non-null/empty values, resolve placeholders
+        resolved[key] = await this._resolveStringWithPlaceholders(value, baseContext);
       }
-
-      if (!madeProgress) {
-        logger.warn(`Circular dependencies detected in env variables: ${stillUnresolved.map(([k]) => k).join(', ')}`);
-        // Add unresolved values as-is with fallback
-        stillUnresolved.forEach(([key, value]) => {
-          resolved[key] = value || baseContext[key] || '';
-        });
-        break;
-      }
-
-      unresolved.length = 0;
-      unresolved.push(...stillUnresolved);
-      passCount++;
     }
 
     return resolved;
@@ -172,11 +150,22 @@ export class EnvResolver {
 
         if (content.startsWith('cmd:')) {
           // Execute command
-          resolvedValue = await this._executeCommand(fullMatch);
+          try {
+            resolvedValue = await this._executeCommand(fullMatch);
+          } catch (cmdError) {
+            if (this.strict) {
+              throw new Error(`cmd execution failed: ${cmdError.message}`);
+            }
+            logger.warn(`Failed to execute command in placeholder ${fullMatch}: ${cmdError.message}`);
+            continue; // Keep original placeholder
+          }
         } else {
           // Environment variable lookup
           resolvedValue = context[content];
           if (resolvedValue === undefined) {
+            if (this.strict) {
+              throw new Error(`Variable '${content}' not found`);
+            }
             logger.debug(`Unresolved placeholder: ${fullMatch}`);
             continue; // Keep original placeholder
           }
@@ -185,6 +174,9 @@ export class EnvResolver {
         // Replace the placeholder with resolved value
         result = result.replace(fullMatch, resolvedValue);
       } catch (error) {
+        if (this.strict) {
+          throw error; // Re-throw in strict mode
+        }
         logger.warn(`Failed to resolve placeholder ${fullMatch}: ${error.message}`);
         // Keep original placeholder on error
       }
@@ -214,12 +206,16 @@ export class EnvResolver {
       command = value.slice(2).trim();
     } else {
       // New syntax: ${cmd: command args}
-      const match = value.match(/\$\{cmd:\s*([^}]+)\}/);
+      const match = value.match(/\$\{cmd:\s*([^}]*)\}/);
       if (match) {
         command = match[1].trim();
       } else {
         throw new Error(`Invalid command syntax: ${value}`);
       }
+    }
+
+    if (!command) {
+      throw new Error(`Empty command in ${value}`);
     }
 
     logger.debug(`Executing command: ${command}`);
@@ -231,16 +227,10 @@ export class EnvResolver {
     return stdout.trim();
   }
 
-  /**
-   * Check if string has unresolved placeholders
-   */
-  _hasUnresolvedPlaceholders(value) {
-    return typeof value === 'string' && /\$\{[^}]+\}/.test(value);
-  }
 }
 
-// Export singleton instance
-export const envResolver = new EnvResolver();
+// Export singleton instance with strict mode enabled
+export const envResolver = new EnvResolver({ strict: true });
 
 // Export legacy function for backward compatibility
 export async function resolveEnvironmentVariables(envConfig) {

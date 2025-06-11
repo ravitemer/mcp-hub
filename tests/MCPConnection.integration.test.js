@@ -331,7 +331,7 @@ describe("MCPConnection Integration Tests", () => {
   });
 
   describe("Error Handling", () => {
-    it("should handle command execution failures gracefully", async () => {
+    it("should fail connection on command execution failures in strict mode", async () => {
       const config = {
         url: "https://api.example.com",
         headers: {
@@ -345,15 +345,10 @@ describe("MCPConnection Integration Tests", () => {
 
       connection = new MCPConnection("test-server", config);
 
-      // Mock successful capabilities
-      mockClient.request.mockResolvedValue({ tools: [], resources: [], resourceTemplates: [], prompts: [] });
-
-      // Mock HTTP transport
-      const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
-      const mockHTTPTransport = { close: vi.fn() };
-      StreamableHTTPClientTransport.mockReturnValue(mockHTTPTransport);
-
-      await connection.connect();
+      // Connection should fail due to command execution failure
+      await expect(connection.connect()).rejects.toThrow(
+        /Failed to connect to "test-server" MCP server: cmd execution failed:/
+      );
 
       // Command should have been attempted
       expect(mockExecPromise).toHaveBeenCalledWith(
@@ -361,19 +356,7 @@ describe("MCPConnection Integration Tests", () => {
         expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
       );
 
-      // Should fallback to original placeholder on command failure
-      expect(StreamableHTTPClientTransport).toHaveBeenCalledWith(
-        new URL("https://api.example.com"),
-        expect.objectContaining({
-          requestInit: {
-            headers: {
-              "Authorization": "Bearer ${cmd: failing-command}" // Original placeholder kept
-            }
-          }
-        })
-      );
-
-      expect(connection.status).toBe("connected");
+      expect(connection.status).toBe("disconnected");
     });
 
     it("should handle transport creation errors", async () => {

@@ -155,10 +155,15 @@ export class MCPConnection extends EventEmitter {
       this.status = ConnectionStatus.CONNECTING;
       this.lastStarted = new Date().toISOString();
 
+      // Resolve config once for all transport types
+      const resolvedConfig = await envResolver.resolveConfig(this.config, [
+        'env', 'args', 'command', 'url', 'headers'
+      ]);
+
       try {
         // Create appropriate transport based on transport type
         if (this.transportType === 'stdio') {
-          this.transport = await this._createStdioTransport();
+          this.transport = await this._createStdioTransport(resolvedConfig);
           this.client = this._createClient();
           await this.client.connect(this.transport, {
             timeout: CLIENT_CONNECT_TIMEOUT
@@ -167,36 +172,42 @@ export class MCPConnection extends EventEmitter {
           //First try the new http transport with fallback to deprecated sse transport
           try {
             this.authProvider = this._createOAuthProvider()
-            this.transport = await this._createStreambleHTTPTransport(this.authProvider)
+            this.transport = await this._createStreambleHTTPTransport(this.authProvider, resolvedConfig)
             this.client = this._createClient();
             await this.client.connect(this.transport, {
               timeout: CLIENT_CONNECT_TIMEOUT
             });
           } catch (httpError) {
-            //catches 401 error from http transport
-            if (this._isAuthError(httpError)) {
-              logger.debug(`'${this.name}' streamable-http transport needs authorization: ${httpError.message}`);
-              return this._handleUnauthorizedConnection()
-            } else {
-              logger.debug(`'${this.name}' streamable-http error: ${httpError.message}. Falling back to SSE transport`);
-              this.authProvider = this._createOAuthProvider()
-              this.transport = await this._createSSETransport(this.authProvider);
-              this.client = this._createClient();
-              await this.client.connect(this.transport, {
-                timeout: CLIENT_CONNECT_TIMEOUT
-              });
+            try {
+              //catches 401 error from http transport
+              if (this._isAuthError(httpError)) {
+                logger.debug(`'${this.name}' streamable-http transport needs authorization: ${httpError.message}`);
+                return this._handleUnauthorizedConnection()
+              } else {
+                logger.debug(`'${this.name}' streamable-http error: ${httpError.message}. Falling back to SSE transport`);
+                this.authProvider = this._createOAuthProvider()
+                this.transport = await this._createSSETransport(this.authProvider, resolvedConfig);
+                this.client = this._createClient();
+                await this.client.connect(this.transport, {
+                  timeout: CLIENT_CONNECT_TIMEOUT
+                });
+              }
+            } catch (sseError) {
+
+              //catches 401 error from sse transport
+              if (this._isAuthError(sseError)) {
+                logger.debug(`'${this.name}' SSE transport needs authorization: ${sseError.message}`);
+                return this._handleUnauthorizedConnection()
+              } else {
+                logger.debug(`'${this.name}' failed to start connection with http and sse transports: ${sseError.message}`);
+                throw sseError
+              }
             }
           }
         }
       } catch (error) {
-        //catches 401 error from sse transport
-        if (this._isAuthError(error)) {
-          logger.debug(`'${this.name}' SSE transport needs authorization: ${error.message}`);
-          return this._handleUnauthorizedConnection()
-        } else {
-          logger.debug(`'${this.name}' failed to start connection with http and sse transports: ${error.message}`);
-          throw error
-        }
+        logger.debug(`'${this.name}' failed to start connection: ${error.message}`);
+        throw error
       }
 
       // Fetch initial capabilities before marking as connected
@@ -603,11 +614,7 @@ export class MCPConnection extends EventEmitter {
     };
   }
 
-  async _createStdioTransport() {
-    // Resolve all placeholders in config using centralized resolver
-    const resolvedConfig = await envResolver.resolveConfig(this.config, [
-      'env', 'args', 'command'
-    ]);
+  async _createStdioTransport(resolvedConfig) {
 
     // Build serverEnv with resolved values
     const serverEnv = {
@@ -636,11 +643,7 @@ export class MCPConnection extends EventEmitter {
   }
 
 
-  async _createStreambleHTTPTransport(authProvider) {
-    // Resolve URL, headers, and env with EnvResolver
-    const resolvedConfig = await envResolver.resolveConfig(this.config, [
-      'env', 'url', 'headers'
-    ]);
+  async _createStreambleHTTPTransport(authProvider, resolvedConfig) {
 
     const options = {
       authProvider,
@@ -654,11 +657,7 @@ export class MCPConnection extends EventEmitter {
     return transport
   }
 
-  async _createSSETransport(authProvider) {
-    // Resolve URL, headers, and env with EnvResolver
-    const resolvedConfig = await envResolver.resolveConfig(this.config, [
-      'env', 'url', 'headers'
-    ]);
+  async _createSSETransport(authProvider, resolvedConfig) {
 
     // SSE transport setup with reconnection support
     const reconnectingEventSourceOptions = {
@@ -794,6 +793,8 @@ export class MCPConnection extends EventEmitter {
     await this.connect(currentConfig);
   }
 }
+
+
 
 
 
