@@ -637,9 +637,9 @@ export class MCPConnection extends EventEmitter {
 
 
   async _createStreambleHTTPTransport(authProvider) {
-    // Resolve URL and headers with EnvResolver
+    // Resolve URL, headers, and env with EnvResolver
     const resolvedConfig = await envResolver.resolveConfig(this.config, [
-      'url', 'headers'
+      'env', 'url', 'headers'
     ]);
 
     const options = {
@@ -655,9 +655,9 @@ export class MCPConnection extends EventEmitter {
   }
 
   async _createSSETransport(authProvider) {
-    // Resolve URL and headers with EnvResolver
+    // Resolve URL, headers, and env with EnvResolver
     const resolvedConfig = await envResolver.resolveConfig(this.config, [
-      'url', 'headers'
+      'env', 'url', 'headers'
     ]);
 
     // SSE transport setup with reconnection support

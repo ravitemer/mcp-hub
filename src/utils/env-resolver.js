@@ -26,150 +26,173 @@ export class EnvResolver {
   async resolveConfig(config, fieldsToResolve = ['env', 'args', 'headers', 'url', 'command']) {
     const resolved = JSON.parse(JSON.stringify(config)); // Deep clone
 
-    // Create resolution context from env field for cross-field resolution
-    const envContext = await this._buildEnvContext(resolved.env || {});
+    // Start with process.env as base context
+    let context = { ...process.env };
 
-    // Resolve each field type
+    // Resolve env field first if present (provides context for other fields)
+    if (resolved.env && fieldsToResolve.includes('env')) {
+      resolved.env = await this._resolveFieldUniversal(resolved.env, context, 'env');
+      // Update context with resolved env values
+      context = { ...context, ...resolved.env };
+    }
+
+    // Resolve other fields using the updated context
     for (const field of fieldsToResolve) {
-      if (resolved[field] !== undefined) {
-        resolved[field] = await this._resolveField(resolved[field], envContext, field);
+      if (field !== 'env' && resolved[field] !== undefined) {
+        resolved[field] = await this._resolveFieldUniversal(resolved[field], context, field);
       }
     }
 
     return resolved;
   }
 
+
   /**
-   * Build environment context from env field with command execution
-   * This creates a safe resolution order to prevent recursion
+   * Universal field resolver that handles any field type with ${} placeholders
    */
-  async _buildEnvContext(envConfig) {
-    const context = { ...process.env }; // Start with process.env as base
-    const envEntries = Object.entries(envConfig);
-
-    // First pass: Execute all commands (${cmd: ...})
-    const commandResults = {};
-    for (const [key, value] of envEntries) {
-      if (typeof value === 'string' && this._isCommand(value)) {
-        try {
-          commandResults[key] = await this._executeCommand(value);
-        } catch (error) {
-          logger.warn(`Failed to execute command for ${key}: ${error.message}`);
-          commandResults[key] = value; // Keep original on error
-        }
-      }
-    }
-
-    // Second pass: Resolve environment variables with multi-pass for dependencies
-    const envValues = { ...commandResults };
-    let unresolved = envEntries
-      .filter(([key, value]) => !commandResults[key])
-      .map(([key, value]) => ({ key, value: value || process.env[key] || '' }));
-
-    let passCount = 0;
-    while (unresolved.length > 0 && passCount < this.maxPasses) {
-      const nextUnresolved = [];
-
-      for (const { key, value } of unresolved) {
-        const resolved = this._resolvePlaceholders(value, { ...context, ...envValues });
-
-        if (this._hasUnresolvedPlaceholders(resolved)) {
-          nextUnresolved.push({ key, value });
-        } else {
-          envValues[key] = resolved;
-        }
-      }
-
-      // Break if no progress made (circular dependencies)
-      if (nextUnresolved.length === unresolved.length) {
-        logger.warn(`Circular dependencies detected in env variables: ${nextUnresolved.map(u => u.key).join(', ')}`);
-        // Keep original values
-        nextUnresolved.forEach(({ key, value }) => {
-          envValues[key] = value;
-        });
-        break;
-      }
-
-      unresolved = nextUnresolved;
-      passCount++;
-    }
-
-    return { ...context, ...envValues };
-  }
-
-  /**
-  /**
-   * Resolve a specific field (env, args, headers, url, command)
-   */
-  async _resolveField(fieldValue, context, fieldType) {
-    if (fieldType === 'env') {
-      // env field resolution: use context values when available
-      const result = {};
-      for (const [key, value] of Object.entries(fieldValue)) {
-        result[key] = context.hasOwnProperty(key) ? context[key] : undefined;
-      }
-      return result;
+  async _resolveFieldUniversal(fieldValue, context, fieldType) {
+    if (fieldType === 'env' && typeof fieldValue === 'object') {
+      // Handle env object with multi-pass resolution
+      return await this._resolveEnvObject(fieldValue, context);
     }
 
     if (fieldType === 'args' && Array.isArray(fieldValue)) {
-      return fieldValue.map(arg => {
+      const resolvedArgs = [];
+      for (const arg of fieldValue) {
         if (typeof arg === 'string') {
           // Handle legacy $VAR syntax for backward compatibility
           if (arg.startsWith('$') && !arg.startsWith('${')) {
             logger.warn(`DEPRECATED: Legacy argument syntax '$VAR' is deprecated. Use '\${VAR}' instead. Found: ${arg}`);
             const envKey = arg.substring(1);
-            return context[envKey] || arg;
+            resolvedArgs.push(context[envKey] || arg);
+          } else {
+            resolvedArgs.push(await this._resolveStringWithPlaceholders(arg, context));
           }
-          return this._resolvePlaceholders(arg, context);
+        } else {
+          resolvedArgs.push(arg);
         }
-        return arg;
-      });
+      }
+      return resolvedArgs;
     }
 
     if (fieldType === 'headers' && typeof fieldValue === 'object') {
       const resolved = {};
       for (const [key, value] of Object.entries(fieldValue)) {
-        resolved[key] = typeof value === 'string'
-          ? this._resolvePlaceholders(value, context)
-          : value;
+        if (typeof value === 'string') {
+          resolved[key] = await this._resolveStringWithPlaceholders(value, context);
+        } else {
+          resolved[key] = value;
+        }
       }
       return resolved;
     }
 
     if ((fieldType === 'url' || fieldType === 'command') && typeof fieldValue === 'string') {
-      return this._resolvePlaceholders(fieldValue, context);
+      return await this._resolveStringWithPlaceholders(fieldValue, context);
     }
 
     return fieldValue;
   }
 
   /**
-   * Resolve ${...} placeholders in a string
+   * Resolve env object with multi-pass resolution for dependencies
    */
-  _resolvePlaceholders(value, context) {
-    if (typeof value !== 'string') return value;
+  async _resolveEnvObject(envConfig, baseContext) {
+    const resolved = {};
+    const unresolved = Object.entries(envConfig);
+    let passCount = 0;
 
-    return value.replace(/\$\{([^}]+)\}/g, (match, content) => {
-      const trimmed = content.trim();
+    // Create working context that includes both base context and resolved values
+    let workingContext = { ...baseContext };
 
-      // Handle command execution: ${cmd: command args}
-      if (trimmed.startsWith('cmd:')) {
-        // Commands should already be resolved in context
-        // This is a fallback for any missed commands
-        logger.warn(`Command placeholder found during field resolution: ${match}`);
-        return match; // Keep original
+    while (unresolved.length > 0 && passCount < this.maxPasses) {
+      const stillUnresolved = [];
+      let madeProgress = false;
+
+      for (const [key, value] of unresolved) {
+        // Handle null/empty fallback to process.env
+        let valueToResolve = value;
+        if (value === null || value === '') {
+          valueToResolve = baseContext[key] || '';
+        }
+
+        const resolvedValue = await this._resolveStringWithPlaceholders(valueToResolve, workingContext);
+
+        if (this._hasUnresolvedPlaceholders(resolvedValue)) {
+          stillUnresolved.push([key, value]);
+        } else {
+          resolved[key] = resolvedValue;
+          workingContext[key] = resolvedValue; // Add to working context
+          madeProgress = true;
+        }
       }
 
-      // Handle environment variable: ${VAR_NAME}
-      if (context.hasOwnProperty(trimmed)) {
-        return context[trimmed];
+      if (!madeProgress) {
+        logger.warn(`Circular dependencies detected in env variables: ${stillUnresolved.map(([k]) => k).join(', ')}`);
+        // Add unresolved values as-is with fallback
+        stillUnresolved.forEach(([key, value]) => {
+          resolved[key] = value || baseContext[key] || '';
+        });
+        break;
       }
 
-      // Log unresolved placeholder
-      logger.debug(`Unresolved placeholder: ${match}`);
-      return match; // Keep original placeholder
-    });
+      unresolved.length = 0;
+      unresolved.push(...stillUnresolved);
+      passCount++;
+    }
+
+    return resolved;
   }
+
+  /**
+   * Resolve all ${} placeholders in a string (can handle multiple placeholders)
+   */
+  async _resolveStringWithPlaceholders(str, context) {
+    if (typeof str !== 'string') return str;
+
+    // Find all ${...} patterns
+    const placeholderRegex = /\$\{([^}]+)\}/g;
+    let result = str;
+    let match;
+
+    // Use a set to track processed placeholders to avoid infinite loops
+    const processedPlaceholders = new Set();
+
+    while ((match = placeholderRegex.exec(str)) !== null) {
+      const fullMatch = match[0]; // ${...}
+      const content = match[1].trim(); // content inside {}
+
+      if (processedPlaceholders.has(fullMatch)) {
+        continue; // Skip already processed placeholders
+      }
+      processedPlaceholders.add(fullMatch);
+
+      try {
+        let resolvedValue;
+
+        if (content.startsWith('cmd:')) {
+          // Execute command
+          resolvedValue = await this._executeCommand(fullMatch);
+        } else {
+          // Environment variable lookup
+          resolvedValue = context[content];
+          if (resolvedValue === undefined) {
+            logger.debug(`Unresolved placeholder: ${fullMatch}`);
+            continue; // Keep original placeholder
+          }
+        }
+
+        // Replace the placeholder with resolved value
+        result = result.replace(fullMatch, resolvedValue);
+      } catch (error) {
+        logger.warn(`Failed to resolve placeholder ${fullMatch}: ${error.message}`);
+        // Keep original placeholder on error
+      }
+    }
+
+    return result;
+  }
+
 
   /**
    * Check if value contains command syntax
@@ -223,5 +246,6 @@ export const envResolver = new EnvResolver();
 export async function resolveEnvironmentVariables(envConfig) {
   logger.warn('DEPRECATED: resolveEnvironmentVariables function is deprecated, use EnvResolver.resolveConfig instead');
   const resolver = new EnvResolver();
-  return await resolver._buildEnvContext(envConfig);
+  const resolved = await resolver.resolveConfig({ env: envConfig }, ['env']);
+  return { ...process.env, ...resolved.env };
 }

@@ -36,12 +36,16 @@ vi.mock("../src/utils/dev-watcher.js", () => ({
   }))
 }));
 
-// Mock envResolver with controllable behavior
-let mockEnvResolver;
-vi.mock("../src/utils/env-resolver.js", () => ({
-  envResolver: {
-    resolveConfig: vi.fn()
-  }
+// Mock child_process for EnvResolver
+let mockExecPromise;
+vi.mock('child_process', () => ({
+  exec: vi.fn()
+}));
+
+vi.mock('util', () => ({
+  promisify: vi.fn().mockImplementation(() => {
+    return (...args) => mockExecPromise(...args);
+  })
 }));
 
 describe("MCPConnection Integration Tests", () => {
@@ -52,20 +56,17 @@ describe("MCPConnection Integration Tests", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    // Get the mocked envResolver
-    const { envResolver } = await import("../src/utils/env-resolver.js");
-    mockEnvResolver = envResolver;
+    // Setup exec mock for EnvResolver
+    mockExecPromise = vi.fn();
 
-    // Setup default envResolver behavior (pass-through)
-    mockEnvResolver.resolveConfig.mockImplementation(async (config, fields) => {
-      const resolved = { ...config };
-      fields.forEach(field => {
-        if (config[field]) {
-          resolved[field] = config[field];
-        }
-      });
-      return resolved;
-    });
+    // Setup fresh process.env for each test
+    process.env = {
+      NODE_ENV: 'test',
+      API_KEY: 'secret_key',
+      CUSTOM_VAR: 'custom_value',
+      PRIVATE_DOMAIN: 'private.example.com',
+      MCP_BINARY_PATH: '/usr/local/bin'
+    };
 
     // Setup mock client
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
@@ -123,29 +124,17 @@ describe("MCPConnection Integration Tests", () => {
     });
   });
 
-  describe("Environment Resolution Integration", () => {
-    it("should resolve stdio server config with envResolver", async () => {
+  describe("Real Environment Resolution Integration", () => {
+    it("should resolve stdio server config with actual envResolver", async () => {
       const config = {
         command: "${MCP_BINARY_PATH}/server",
-        args: ["--token", "${API_TOKEN}", "--legacy", "$LEGACY_VAR"],
+        args: ["--token", "${API_KEY}", "--custom", "${CUSTOM_VAR}"],
         env: {
-          API_TOKEN: "${cmd: echo secret123}",
-          DB_URL: "postgres://user:${DB_PASSWORD}@localhost/db",
-          DB_PASSWORD: "password123"
+          RESOLVED_VAR: "${API_KEY}",
+          COMBINED_VAR: "prefix-${CUSTOM_VAR}-suffix"
         },
         type: "stdio"
       };
-
-      // Mock envResolver to simulate resolution
-      mockEnvResolver.resolveConfig.mockResolvedValueOnce({
-        command: "/usr/local/bin/server",
-        args: ["--token", "secret123", "--legacy", "legacy_value"],
-        env: {
-          API_TOKEN: "secret123",
-          DB_URL: "postgres://user:password123@localhost/db",
-          DB_PASSWORD: "password123"
-        }
-      });
 
       connection = new MCPConnection("test-server", config);
 
@@ -154,21 +143,14 @@ describe("MCPConnection Integration Tests", () => {
 
       await connection.connect();
 
-      // Verify envResolver was called with correct parameters
-      expect(mockEnvResolver.resolveConfig).toHaveBeenCalledWith(
-        config,
-        ['env', 'args', 'command']
-      );
-
-      // Verify transport was created with resolved config
+      // Verify transport was created with actually resolved config
       const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
       expect(StdioClientTransport).toHaveBeenCalledWith({
-        command: "/usr/local/bin/server",
-        args: ["--token", "secret123", "--legacy", "legacy_value"],
+        command: "/usr/local/bin/server", // ${MCP_BINARY_PATH} resolved
+        args: ["--token", "secret_key", "--custom", "custom_value"], // ${API_KEY} and ${CUSTOM_VAR} resolved
         env: expect.objectContaining({
-          API_TOKEN: "secret123",
-          DB_URL: "postgres://user:password123@localhost/db",
-          DB_PASSWORD: "password123"
+          RESOLVED_VAR: "secret_key", // ${API_KEY} resolved
+          COMBINED_VAR: "prefix-custom_value-suffix" // ${CUSTOM_VAR} resolved in string
         }),
         stderr: 'pipe'
       });
@@ -176,25 +158,18 @@ describe("MCPConnection Integration Tests", () => {
       expect(connection.status).toBe("connected");
     });
 
-    it("should resolve remote server config with envResolver (HTTP transport)", async () => {
+    it("should resolve remote server with command execution in headers", async () => {
       const config = {
         url: "https://${PRIVATE_DOMAIN}/mcp",
         headers: {
-          "Authorization": "Bearer ${cmd: op read secret}",
+          "Authorization": "Bearer ${cmd: echo auth_token_123}",
           "X-Custom": "${CUSTOM_VAR}"
         },
         type: "sse"
       };
 
-      // Mock envResolver to simulate resolution (called twice - once for each transport attempt)
-      mockEnvResolver.resolveConfig
-        .mockResolvedValueOnce({
-          url: "https://private.example.com/mcp",
-          headers: {
-            "Authorization": "Bearer secret_token_123",
-            "X-Custom": "custom_value"
-          }
-        });
+      // Mock command execution
+      mockExecPromise.mockResolvedValueOnce({ stdout: "auth_token_123\n" });
 
       connection = new MCPConnection("test-server", config);
 
@@ -208,20 +183,20 @@ describe("MCPConnection Integration Tests", () => {
 
       await connection.connect();
 
-      // Verify envResolver was called for URL and headers
-      expect(mockEnvResolver.resolveConfig).toHaveBeenCalledWith(
-        config,
-        ['url', 'headers']
+      // Verify command was executed
+      expect(mockExecPromise).toHaveBeenCalledWith(
+        "echo auth_token_123",
+        expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
       );
 
-      // Verify HTTP transport was created with resolved URL (tries HTTP first)
+      // Verify transport was created with actually resolved config
       expect(StreamableHTTPClientTransport).toHaveBeenCalledWith(
-        new URL("https://private.example.com/mcp"),
+        new URL("https://private.example.com/mcp"), // ${PRIVATE_DOMAIN} resolved
         expect.objectContaining({
           requestInit: {
             headers: {
-              "Authorization": "Bearer secret_token_123",
-              "X-Custom": "custom_value"
+              "Authorization": "Bearer auth_token_123", // ${cmd: echo auth_token_123} executed
+              "X-Custom": "custom_value" // ${CUSTOM_VAR} resolved
             }
           }
         })
@@ -230,62 +205,169 @@ describe("MCPConnection Integration Tests", () => {
       expect(connection.status).toBe("connected");
     });
 
-    it("should fallback to SSE transport when HTTP fails", async () => {
+    it("should resolve env field providing context for headers field", async () => {
       const config = {
-        url: "https://${PRIVATE_DOMAIN}/mcp",
+        url: "https://api.example.com",
+        env: {
+          SECRET_TOKEN: "${cmd: echo secret_from_env}"
+        },
         headers: {
-          "Authorization": "Bearer ${cmd: op read secret}",
-          "X-Custom": "${CUSTOM_VAR}"
+          "Authorization": "Bearer ${SECRET_TOKEN}" // Should use resolved env value
         },
         type: "sse"
       };
 
-      // Mock envResolver to simulate resolution (called twice - once for each transport attempt)
-      mockEnvResolver.resolveConfig
-        .mockResolvedValueOnce({
-          url: "https://private.example.com/mcp",
-          headers: {
-            "Authorization": "Bearer secret_token_123",
-            "X-Custom": "custom_value"
-          }
-        })
-        .mockResolvedValueOnce({
-          url: "https://private.example.com/mcp",
-          headers: {
-            "Authorization": "Bearer secret_token_123",
-            "X-Custom": "custom_value"
-          }
-        });
+      // Mock command execution
+      mockExecPromise.mockResolvedValueOnce({ stdout: "secret_from_env\n" });
 
       connection = new MCPConnection("test-server", config);
 
-      // Mock HTTP transport to fail (non-auth error)
-      const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
-      StreamableHTTPClientTransport.mockImplementation(() => {
-        throw new Error("HTTP transport failed");
-      });
+      // Mock successful capabilities
+      mockClient.request.mockResolvedValue({ tools: [], resources: [], resourceTemplates: [], prompts: [] });
 
-      // Mock SSE transport to succeed
-      const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
-      const mockSSETransport = { close: vi.fn() };
-      SSEClientTransport.mockReturnValue(mockSSETransport);
+      // Mock HTTP transport
+      const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+      const mockHTTPTransport = { close: vi.fn() };
+      StreamableHTTPClientTransport.mockReturnValue(mockHTTPTransport);
+
+      await connection.connect();
+
+      // Verify command was executed for env
+      expect(mockExecPromise).toHaveBeenCalledWith(
+        "echo secret_from_env",
+        expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
+      );
+
+      // Verify headers used resolved env value
+      expect(StreamableHTTPClientTransport).toHaveBeenCalledWith(
+        new URL("https://api.example.com"),
+        expect.objectContaining({
+          requestInit: {
+            headers: {
+              "Authorization": "Bearer secret_from_env" // ${SECRET_TOKEN} resolved from env
+            }
+          }
+        })
+      );
+
+      expect(connection.status).toBe("connected");
+    });
+
+    it("should work with remote servers having no env field (the original bug)", async () => {
+      const config = {
+        url: "https://api.example.com",
+        headers: {
+          "Authorization": "Bearer ${cmd: echo remote_token_directly}"
+        },
+        type: "sse"
+      };
+
+      // Mock command execution
+      mockExecPromise.mockResolvedValueOnce({ stdout: "remote_token_directly\n" });
+
+      connection = new MCPConnection("test-server", config);
+
+      // Mock successful capabilities
+      mockClient.request.mockResolvedValue({ tools: [], resources: [], resourceTemplates: [], prompts: [] });
+
+      // Mock HTTP transport
+      const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+      const mockHTTPTransport = { close: vi.fn() };
+      StreamableHTTPClientTransport.mockReturnValue(mockHTTPTransport);
+
+      await connection.connect();
+
+      // Verify command was executed directly in headers field
+      expect(mockExecPromise).toHaveBeenCalledWith(
+        "echo remote_token_directly",
+        expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
+      );
+
+      // Verify headers resolved correctly without env field
+      expect(StreamableHTTPClientTransport).toHaveBeenCalledWith(
+        new URL("https://api.example.com"),
+        expect.objectContaining({
+          requestInit: {
+            headers: {
+              "Authorization": "Bearer remote_token_directly"
+            }
+          }
+        })
+      );
+
+      expect(connection.status).toBe("connected");
+    });
+
+    it("should handle legacy $VAR syntax with deprecation warning", async () => {
+      const config = {
+        command: "test-server",
+        args: ["--token", "$API_KEY"], // Legacy syntax
+        env: {
+          SOME_VAR: "value"
+        },
+        type: "stdio"
+      };
+
+      connection = new MCPConnection("test-server", config);
 
       // Mock successful capabilities
       mockClient.request.mockResolvedValue({ tools: [], resources: [], resourceTemplates: [], prompts: [] });
 
       await connection.connect();
 
-      // Verify envResolver was called twice (once for HTTP, once for SSE)
-      expect(mockEnvResolver.resolveConfig).toHaveBeenCalledTimes(2);
+      // Verify legacy syntax still works
+      const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+      expect(StdioClientTransport).toHaveBeenCalledWith({
+        command: "test-server",
+        args: ["--token", "secret_key"], // $API_KEY resolved from process.env
+        env: expect.objectContaining({
+          SOME_VAR: "value"
+        }),
+        stderr: 'pipe'
+      });
 
-      // Verify SSE transport was created after HTTP failed
-      expect(SSEClientTransport).toHaveBeenCalledWith(
-        new URL("https://private.example.com/mcp"),
+      expect(connection.status).toBe("connected");
+    });
+  });
+
+  describe("Error Handling", () => {
+    it("should handle command execution failures gracefully", async () => {
+      const config = {
+        url: "https://api.example.com",
+        headers: {
+          "Authorization": "Bearer ${cmd: failing-command}"
+        },
+        type: "sse"
+      };
+
+      // Mock command to fail
+      mockExecPromise.mockRejectedValueOnce(new Error("Command not found"));
+
+      connection = new MCPConnection("test-server", config);
+
+      // Mock successful capabilities
+      mockClient.request.mockResolvedValue({ tools: [], resources: [], resourceTemplates: [], prompts: [] });
+
+      // Mock HTTP transport
+      const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+      const mockHTTPTransport = { close: vi.fn() };
+      StreamableHTTPClientTransport.mockReturnValue(mockHTTPTransport);
+
+      await connection.connect();
+
+      // Command should have been attempted
+      expect(mockExecPromise).toHaveBeenCalledWith(
+        "failing-command",
+        expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
+      );
+
+      // Should fallback to original placeholder on command failure
+      expect(StreamableHTTPClientTransport).toHaveBeenCalledWith(
+        new URL("https://api.example.com"),
         expect.objectContaining({
           requestInit: {
             headers: {
-              "Authorization": "Bearer secret_token_123",
-              "X-Custom": "custom_value"
+              "Authorization": "Bearer ${cmd: failing-command}" // Original placeholder kept
             }
           }
         })
@@ -293,47 +375,22 @@ describe("MCPConnection Integration Tests", () => {
 
       expect(connection.status).toBe("connected");
     });
-  });
-
-  describe("Error Handling", () => {
-    it("should handle envResolver errors gracefully", async () => {
-      const config = {
-        command: "${INVALID_COMMAND}",
-        args: [],
-        env: {},
-        type: "stdio"
-      };
-
-      // Mock envResolver to throw an error
-      const resolverError = new Error("Command execution failed");
-      mockEnvResolver.resolveConfig.mockRejectedValueOnce(resolverError);
-
-      connection = new MCPConnection("test-server", config);
-
-      await expect(connection.connect()).rejects.toThrow(
-        'Failed to connect to "test-server" MCP server: Command execution failed'
-      );
-
-      expect(connection.status).toBe("disconnected");
-    });
 
     it("should handle transport creation errors", async () => {
       const config = {
-        command: "test-server",
+        command: "${MCP_BINARY_PATH}/server",
         args: [],
         env: {},
         type: "stdio"
       };
 
-      // Mock successful resolution but transport creation failure
-      mockEnvResolver.resolveConfig.mockResolvedValueOnce(config);
+      connection = new MCPConnection("test-server", config);
 
+      // Mock transport creation failure
       const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
       StdioClientTransport.mockImplementation(() => {
         throw new Error("Transport creation failed");
       });
-
-      connection = new MCPConnection("test-server", config);
 
       await expect(connection.connect()).rejects.toThrow(
         'Failed to connect to "test-server" MCP server: Transport creation failed'
