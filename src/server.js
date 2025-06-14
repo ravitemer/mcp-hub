@@ -14,6 +14,7 @@ import {
   wrapError,
 } from "./utils/errors.js";
 import { getMarketplace } from "./marketplace.js";
+import { MCPServerEndpoint } from "./mcp/server.js";
 
 const SERVER_ID = "mcp-hub";
 
@@ -35,6 +36,7 @@ function getStatusCode(error) {
 
 let serviceManager = null;
 let marketplace = null;
+let mcpServerEndpoint = null;
 
 class ServiceManager {
   constructor(options = {}) {
@@ -68,6 +70,11 @@ class ServiceManager {
   setState(newState, extraData) {
     this.state = newState;
     this.broadcastHubState(extraData);
+
+    // Emit state change event via MCPHub for MCP endpoint to sync tools
+    if (this.mcpHub) {
+      this.mcpHub.emit('hubStateChanged', { state: newState, extraData });
+    }
   }
 
   /**
@@ -135,6 +142,16 @@ class ServiceManager {
     this.mcpHub.on("devServerRestarted", (data) => {
       this.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, data);
     });
+
+    // Initialize MCP server endpoint
+    try {
+      mcpServerEndpoint = new MCPServerEndpoint(this.mcpHub);
+      logger.info(`Hub endpoint ready: Use \`${mcpServerEndpoint.getEndpointUrl()}\` endpoint with any other MCP clients`);
+    } catch (error) {
+      logger.error("MCP_ENDPOINT_INIT_ERROR", "Failed to initialize MCP server endpoint", {
+        error: error.message
+      }, false);
+    }
 
     await this.mcpHub.initialize();
     this.setState(HubState.READY)
@@ -261,6 +278,17 @@ class ServiceManager {
   async shutdown() {
     this.setState(HubState.STOPPING)
     logger.info("Starting graceful shutdown process");
+
+    // Close MCP server endpoint
+    if (mcpServerEndpoint) {
+      try {
+        await mcpServerEndpoint.close();
+        mcpServerEndpoint = null;
+      } catch (error) {
+        logger.debug(`Error closing MCP server endpoint: ${error.message}`);
+      }
+    }
+
     await Promise.allSettled([this.stopMCPHub(), this.sseManager.shutdown(), this.stopServer()]);
     this.setState(HubState.STOPPED)
   }
@@ -285,6 +313,36 @@ registerRoute("GET", "/events", "Subscribe to server events", (req, res) => {
     // Ensure response is ended
     if (!res.writableEnded) {
       res.status(500).end();
+    }
+  }
+});
+
+// Register MCP SSE endpoint
+app.get("/mcp", async (req, res) => {
+  try {
+    if (!mcpServerEndpoint) {
+      throw new ServerError("MCP server endpoint not initialized");
+    }
+    await mcpServerEndpoint.handleSSEConnection(req, res);
+  } catch (error) {
+    logger.warn(`Failed to setup MCP SSE connection: ${error.message}`)
+    if (!res.headersSent) {
+      res.status(500).send('Error establishing MCP connection');
+    }
+  }
+});
+
+// Register MCP messages endpoint
+app.post("/messages", async (req, res) => {
+  try {
+    if (!mcpServerEndpoint) {
+      throw new ServerError("MCP server endpoint not initialized");
+    }
+    await mcpServerEndpoint.handleMCPMessage(req, res);
+  } catch (error) {
+    logger.warn('Failed to handle MCP message');
+    if (!res.headersSent) {
+      res.status(500).send('Error handling MCP message');
     }
   }
 });
@@ -407,7 +465,7 @@ registerRoute(
 
 // Register health check endpoint
 registerRoute("GET", "/health", "Check server health", (req, res) => {
-  res.json({
+  const healthData = {
     status: "ok",
     state: serviceManager?.state || HubState.STARTING,
     server_id: SERVER_ID,
@@ -415,7 +473,14 @@ registerRoute("GET", "/health", "Check server health", (req, res) => {
     timestamp: new Date().toISOString(),
     servers: serviceManager?.mcpHub?.getAllServerStatuses() || [],
     connections: serviceManager?.sseManager?.getStats() || { totalConnections: 0, connections: [] }
-  });
+  };
+
+  // Add MCP endpoint stats if available
+  if (mcpServerEndpoint) {
+    healthData.mcpEndpoint = mcpServerEndpoint.getStats();
+  }
+
+  res.json(healthData);
 });
 
 // Register server list endpoint
@@ -840,4 +905,6 @@ export async function startServer(options = {}) {
 }
 
 export default app;
+
+
 

@@ -329,6 +329,15 @@ export class MCPHub extends EventEmitter {
     );
   }
 
+  async rawRequest(serverName, ...rest) {
+    const connection = this.connections.get(serverName);
+    if (!connection) {
+      throw new ServerError("Server not found", {
+        server: serverName,
+      });
+    }
+    return await connection.raw_request(...rest);
+  }
   async callTool(serverName, toolName, args, request_options) {
     const connection = this.connections.get(serverName);
     if (!connection) {

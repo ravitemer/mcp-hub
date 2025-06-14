@@ -12,6 +12,7 @@ import {
   ListToolsResultSchema,
   ListResourcesResultSchema,
   ListResourceTemplatesResultSchema,
+  GetPromptResultSchema,
   CallToolResultSchema,
   ReadResourceResultSchema,
   LoggingMessageNotificationSchema,
@@ -26,6 +27,7 @@ import open from "open";
 import {
   ConnectionError,
   ToolError,
+  ServerError,
   ResourceError,
   wrapError,
 } from "./utils/errors.js";
@@ -89,6 +91,7 @@ export class MCPConnection extends EventEmitter {
     this.disabled = config.disabled || false;
     this.authorizationUrl = null;
     this.hubServerUrl = hubServerUrl;
+    this.serverInfo = null; // Will store server's reported name/version
 
     // Initialize dev watcher for stdio servers with dev config
     if (this.transportType === 'stdio' && config.dev) {
@@ -210,7 +213,8 @@ export class MCPConnection extends EventEmitter {
         throw error
       }
 
-      // Fetch initial capabilities before marking as connected
+      // Fetch server info and initial capabilities before marking as connected
+      await this.fetchServerInfo();
       await this.updateCapabilities();
 
       // Set up notification handlers
@@ -290,6 +294,20 @@ export class MCPConnection extends EventEmitter {
   }
 
 
+  async fetchServerInfo() {
+    if (!this.client) {
+      return;
+    }
+
+    try {
+      // Get server info from the connected server
+      this.serverInfo = this.client.getServerVersion();
+    } catch (error) {
+      logger.debug(`Could not fetch server info for '${this.name}': ${error.message}`);
+      this.serverInfo = null;
+    }
+  }
+
   async updateCapabilities(capabilitiesToUpdate) {
     //skip for disabled servers
     if (!this.client) {
@@ -340,6 +358,28 @@ export class MCPConnection extends EventEmitter {
     }
   }
 
+  async raw_request(...args) {
+    if (!this.client) {
+      throw new ToolError("Server not initialized", {
+        server: this.name,
+      });
+    }
+    if (this.status !== ConnectionStatus.CONNECTED) {
+      throw new ServerError("Server not connected", {
+        server: this.name,
+        status: this.status,
+      });
+    }
+
+    try {
+      return await this.client.request(...args);
+    } catch (error) {
+      throw wrapError(error, "RAW_REQUEST_ERROR", {
+        server: this.name,
+      });
+    }
+  }
+
 
   async getPrompt(promptName, args, request_options) {
     if (!this.client) {
@@ -374,10 +414,13 @@ export class MCPConnection extends EventEmitter {
     }
 
     try {
-      return await this.client.getPrompt({
-        name: promptName,
-        arguments: args,
-      }, request_options)
+
+      return await this.client.request({
+        method: "prompts/get", params: {
+          name: promptName,
+          arguments: args
+        }
+      }, GetPromptResultSchema, request_options);
     } catch (error) {
       throw wrapError(error, "PROMPT_EXECUTION_ERROR", {
         server: this.name,
@@ -528,6 +571,7 @@ export class MCPConnection extends EventEmitter {
     this.disabled = this.config.disabled || false;
     this.authorizationUrl = null;
     this.authProvider = null;
+    this.serverInfo = null;
   }
 
   async disconnect(error) {
@@ -611,6 +655,7 @@ export class MCPConnection extends EventEmitter {
       uptime: this.getUptime(),
       lastStarted: this.lastStarted,
       authorizationUrl: this.authorizationUrl,
+      serverInfo: this.serverInfo, // Include server's reported name/version
     };
   }
 
