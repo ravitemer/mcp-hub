@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.4] - 2025-06-16
+
+### Fixed
+- Fixed validation issue with some resource templates not recognized properly.
+
 ## [3.4.3] - 2025-06-12
 
 ### Changed

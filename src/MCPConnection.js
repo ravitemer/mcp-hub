@@ -478,22 +478,22 @@ export class MCPConnection extends EventEmitter {
       });
     }
 
-    const isValidResource =
-      this.resources.some((r) => r.uri === uri) ||
-      this.resourceTemplates.some((t) => {
-        // Convert template to regex pattern
-        const pattern = t.uriTemplate.replace(/\{[^}]+\}/g, "[^/]+");
-        return new RegExp(`^${pattern}$`).test(uri);
-      });
+    // const isValidResource =
+    //   this.resources.some((r) => r.uri === uri) ||
+    //   this.resourceTemplates.some((t) => {
+    //     // Convert template to regex pattern
+    //     const pattern = t.uriTemplate.replace(/\{[^}]+\}/g, "[^/]+");
+    //     return new RegExp(`^${pattern}$`).test(uri);
+    //   });
 
-    if (!isValidResource) {
-      throw new ResourceError(`Resource not found : ${uri}`, {
-        server: this.name,
-        uri,
-        availableResources: this.resources.map((r) => r.uri),
-        availableTemplates: this.resourceTemplates.map((t) => t.uriTemplate),
-      });
-    }
+    // if (!isValidResource) {
+    //   throw new ResourceError(`Resource not found : ${uri}`, {
+    //     server: this.name,
+    //     uri,
+    //     availableResources: this.resources.map((r) => r.uri),
+    //     availableTemplates: this.resourceTemplates.map((t) => t.uriTemplate),
+    //   });
+    // }
 
     try {
       return await this.client.request(
