@@ -145,6 +145,74 @@ describe("EnvResolver", () => {
     });
   });
 
+  describe("Nested Placeholder Resolution", () => {
+    it("should resolve nested environment variables inside command placeholders", async () => {
+      mockExecPromise.mockResolvedValueOnce({ stdout: "nested_cmd_result\n" });
+      const context = {
+        COMMAND: "echo",
+        ARGUMENT: "nested_cmd_result"
+      };
+
+      const result = await resolver._resolveStringWithPlaceholders(
+        "Data: ${cmd: ${COMMAND} ${ARGUMENT}}",
+        context
+      );
+
+      expect(mockExecPromise).toHaveBeenCalledWith(
+        "echo nested_cmd_result",
+        expect.any(Object)
+      );
+      expect(result).toBe("Data: nested_cmd_result");
+    });
+
+    it("should handle complex nested command and variable placeholders", async () => {
+      mockExecPromise.mockResolvedValueOnce({ stdout: "obsidian-token" });
+      const context = {
+        TEST: 'hello',
+        XDG_RUNTIME_DIR: '/run/user/1000'
+      };
+
+      const result = await resolver._resolveStringWithPlaceholders(
+        "TOKEN ${TEST} ${cmd: cat ${XDG_RUNTIME_DIR}/agenix/mcp-obsidian-token} ${TEST}",
+        context
+      );
+
+      expect(mockExecPromise).toHaveBeenCalledWith(
+        "cat /run/user/1000/agenix/mcp-obsidian-token",
+        expect.any(Object)
+      );
+      expect(result).toBe("TOKEN hello obsidian-token hello");
+    });
+
+    it("should throw error on unresolved nested placeholders in strict mode", async () => {
+      const context = {
+        KNOWN_VAR: 'known'
+      };
+
+      await expect(resolver._resolveStringWithPlaceholders(
+        "Data: ${cmd: echo ${UNKNOWN_VAR}}",
+        context
+      )).rejects.toThrow("Variable 'UNKNOWN_VAR' not found");
+    });
+
+    it("should keep unresolved nested placeholders in non-strict mode by executing command with literal", async () => {
+      const nonStrictResolver = new EnvResolver({ strict: false });
+      const context = { KNOWN_VAR: 'known' };
+      mockExecPromise.mockResolvedValueOnce({ stdout: "${UNKNOWN_VAR}\n" });
+
+      const result = await nonStrictResolver._resolveStringWithPlaceholders(
+        "Data: ${cmd: echo ${UNKNOWN_VAR}} and ${KNOWN_VAR}",
+        context
+      );
+
+      expect(mockExecPromise).toHaveBeenCalledWith(
+        "echo ${UNKNOWN_VAR}",
+        expect.any(Object)
+      );
+      expect(result).toBe("Data: ${UNKNOWN_VAR} and known");
+    });
+  });
+
   describe("Command Execution", () => {
     it("should execute legacy $: commands", async () => {
       mockExecPromise.mockResolvedValueOnce({ stdout: "command_output\n" });

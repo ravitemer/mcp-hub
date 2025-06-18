@@ -123,66 +123,111 @@ export class EnvResolver {
   }
 
   /**
-   * Resolve all ${} placeholders in a string (can handle multiple placeholders)
+   * Resolve all ${} placeholders in a string, with support for nested placeholders.
    */
-  async _resolveStringWithPlaceholders(str, context) {
-    if (typeof str !== 'string') return str;
-
-    // Find all ${...} patterns
-    const placeholderRegex = /\$\{([^}]+)\}/g;
-    let result = str;
-    let match;
-
-    // Use a set to track processed placeholders to avoid infinite loops
-    const processedPlaceholders = new Set();
-
-    while ((match = placeholderRegex.exec(str)) !== null) {
-      const fullMatch = match[0]; // ${...}
-      const content = match[1].trim(); // content inside {}
-
-      if (processedPlaceholders.has(fullMatch)) {
-        continue; // Skip already processed placeholders
-      }
-      processedPlaceholders.add(fullMatch);
-
-      try {
-        let resolvedValue;
-
-        if (content.startsWith('cmd:')) {
-          // Execute command
-          try {
-            resolvedValue = await this._executeCommand(fullMatch);
-          } catch (cmdError) {
-            if (this.strict) {
-              throw new Error(`cmd execution failed: ${cmdError.message}`);
-            }
-            logger.warn(`Failed to execute command in placeholder ${fullMatch}: ${cmdError.message}`);
-            continue; // Keep original placeholder
-          }
-        } else {
-          // Environment variable lookup
-          resolvedValue = context[content];
-          if (resolvedValue === undefined) {
-            if (this.strict) {
-              throw new Error(`Variable '${content}' not found`);
-            }
-            logger.debug(`Unresolved placeholder: ${fullMatch}`);
-            continue; // Keep original placeholder
-          }
-        }
-
-        // Replace the placeholder with resolved value
-        result = result.replace(fullMatch, resolvedValue);
-      } catch (error) {
-        if (this.strict) {
-          throw error; // Re-throw in strict mode
-        }
-        logger.warn(`Failed to resolve placeholder ${fullMatch}: ${error.message}`);
-        // Keep original placeholder on error
-      }
+  async _resolveStringWithPlaceholders(str, context, depth = 0) {
+    if (depth > this.maxPasses) {
+      throw new Error('Max placeholder resolution depth exceeded, possible circular reference.');
     }
 
+    if (typeof str !== 'string' || !str.includes('${')) {
+      return str;
+    }
+
+    const placeholders = this._findTopLevelPlaceholders(str);
+    if (placeholders.length === 0) {
+      return str;
+    }
+
+    let result = '';
+    let lastIndex = 0;
+
+    for (const { fullMatch, content, startIndex, endIndex } of placeholders) {
+      // Append text before the current placeholder
+      result += str.substring(lastIndex, startIndex);
+
+      // Recursively resolve placeholders within the content of the current placeholder
+      const resolvedContent = await this._resolveStringWithPlaceholders(content, context, depth + 1);
+
+      let resolvedValue;
+      try {
+        if (resolvedContent.startsWith('cmd:')) {
+          // Reconstruct the command placeholder with resolved content to pass to _executeCommand
+          const commandPlaceholder = `\${${resolvedContent}}`;
+          resolvedValue = await this._executeCommand(commandPlaceholder);
+        } else {
+          // Environment variable lookup
+          resolvedValue = context[resolvedContent];
+          if (resolvedValue === undefined) {
+            if (this.strict) {
+              throw new Error(`Variable '${resolvedContent}' not found`);
+            }
+            logger.debug(`Unresolved placeholder: ${fullMatch}`);
+            resolvedValue = fullMatch; // Keep original placeholder if not found and not in strict mode
+          }
+        }
+      } catch (error) {
+        if (this.strict) {
+          // Check if the error came from a command execution
+          if (resolvedContent.startsWith('cmd:')) {
+            throw new Error(`cmd execution failed: ${error.message}`);
+          }
+          throw error; // Re-throw other errors (like variable not found)
+        }
+        logger.warn(`Failed to resolve placeholder ${fullMatch}: ${error.message}`);
+        resolvedValue = fullMatch; // Keep original placeholder on error
+      }
+
+      result += resolvedValue;
+      lastIndex = endIndex;
+    }
+
+    // Append the rest of the string after the last placeholder
+    result += str.substring(lastIndex);
+
     return result;
+  }
+
+
+  /**
+   * Finds top-level placeholders ${...} in a string, correctly handling nested ones.
+   * @returns {Array<{fullMatch: string, content: string, startIndex: number, endIndex: number}>}
+   */
+  _findTopLevelPlaceholders(str) {
+    const placeholders = [];
+    let searchIndex = 0;
+    while (searchIndex < str.length) {
+      const startIndex = str.indexOf('${', searchIndex);
+      if (startIndex === -1) {
+        break;
+      }
+
+      let braceCount = 1;
+      let endIndex = -1;
+      for (let i = startIndex + 2; i < str.length; i++) {
+        if (str.substring(i, i + 2) === '${') {
+          braceCount++;
+          i++; // Skip the '{' to avoid double counting
+        } else if (str[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            endIndex = i;
+            break;
+          }
+        }
+      }
+
+      if (endIndex !== -1) {
+        const fullMatch = str.substring(startIndex, endIndex + 1);
+        const content = str.substring(startIndex + 2, endIndex);
+        placeholders.push({ fullMatch, content, startIndex, endIndex: endIndex + 1 });
+        searchIndex = endIndex + 1;
+      } else {
+        // Unmatched opening brace, continue search after it
+        searchIndex = startIndex + 2;
+      }
+    }
+    return placeholders;
   }
 
 
@@ -204,14 +249,11 @@ export class EnvResolver {
       // Legacy syntax: $: command args
       logger.warn(`DEPRECATED: Legacy command syntax '$:' is deprecated. Use '\${cmd: command args}' instead. Found: ${value}`);
       command = value.slice(2).trim();
-    } else {
+    } else if (value.startsWith('${cmd:') && value.endsWith('}')) {
       // New syntax: ${cmd: command args}
-      const match = value.match(/\$\{cmd:\s*([^}]*)\}/);
-      if (match) {
-        command = match[1].trim();
-      } else {
-        throw new Error(`Invalid command syntax: ${value}`);
-      }
+      command = value.slice(6, -1).trim();
+    } else {
+      throw new Error(`Invalid command syntax: ${value}`);
     }
 
     if (!command) {
