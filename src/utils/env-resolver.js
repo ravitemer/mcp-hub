@@ -150,11 +150,12 @@ export class EnvResolver {
       const resolvedContent = await this._resolveStringWithPlaceholders(content, context, depth + 1);
 
       let resolvedValue;
+      const isCommand = resolvedContent.startsWith('cmd:');
+
       try {
-        if (resolvedContent.startsWith('cmd:')) {
-          // Reconstruct the command placeholder with resolved content to pass to _executeCommand
-          const commandPlaceholder = `\${${resolvedContent}}`;
-          resolvedValue = await this._executeCommand(commandPlaceholder);
+        if (isCommand) {
+          // Execute command directly with resolved content
+          resolvedValue = await this._executeCommandContent(resolvedContent);
         } else {
           // Environment variable lookup
           resolvedValue = context[resolvedContent];
@@ -168,8 +169,8 @@ export class EnvResolver {
         }
       } catch (error) {
         if (this.strict) {
-          // Check if the error came from a command execution
-          if (resolvedContent.startsWith('cmd:')) {
+          // Wrap command execution errors with context
+          if (isCommand) {
             throw new Error(`cmd execution failed: ${error.message}`);
           }
           throw error; // Re-throw other errors (like variable not found)
@@ -196,7 +197,9 @@ export class EnvResolver {
   _findTopLevelPlaceholders(str) {
     const placeholders = [];
     let searchIndex = 0;
-    while (searchIndex < str.length) {
+    const strLength = str.length;
+
+    while (searchIndex < strLength) {
       const startIndex = str.indexOf('${', searchIndex);
       if (startIndex === -1) {
         break;
@@ -204,11 +207,14 @@ export class EnvResolver {
 
       let braceCount = 1;
       let endIndex = -1;
-      for (let i = startIndex + 2; i < str.length; i++) {
-        if (str.substring(i, i + 2) === '${') {
+
+      for (let i = startIndex + 2; i < strLength; i++) {
+        const char = str[i];
+
+        if (char === '$' && i + 1 < strLength && str[i + 1] === '{') {
           braceCount++;
           i++; // Skip the '{' to avoid double counting
-        } else if (str[i] === '}') {
+        } else if (char === '}') {
           braceCount--;
           if (braceCount === 0) {
             endIndex = i;
@@ -240,24 +246,14 @@ export class EnvResolver {
   }
 
   /**
-   * Execute command and return trimmed output
+   * Execute command content (without ${} wrapper) and return trimmed output
    */
-  async _executeCommand(value) {
-    let command;
-
-    if (value.startsWith('$:')) {
-      // Legacy syntax: $: command args
-      logger.warn(`DEPRECATED: Legacy command syntax '$:' is deprecated. Use '\${cmd: command args}' instead. Found: ${value}`);
-      command = value.slice(2).trim();
-    } else if (value.startsWith('${cmd:') && value.endsWith('}')) {
-      // New syntax: ${cmd: command args}
-      command = value.slice(6, -1).trim();
-    } else {
-      throw new Error(`Invalid command syntax: ${value}`);
-    }
+  async _executeCommandContent(content) {
+    // content is already resolved and should be "cmd: command args"
+    const command = content.slice(4).trim(); // Remove "cmd:" prefix
 
     if (!command) {
-      throw new Error(`Empty command in ${value}`);
+      throw new Error(`Empty command in cmd: ${content}`);
     }
 
     logger.debug(`Executing command: ${command}`);
@@ -267,6 +263,33 @@ export class EnvResolver {
     });
 
     return stdout.trim();
+  }
+
+  /**
+  /**
+   * Execute command and return trimmed output (wrapper for backward compatibility)
+   */
+  async _executeCommand(value) {
+    if (value.startsWith('$:')) {
+      // Legacy syntax: $: command args (deprecated but still supported)
+      logger.warn(`DEPRECATED: Legacy command syntax '$:' is deprecated. Use '\${cmd: command args}' instead. Found: ${value}`);
+      const command = value.slice(2).trim();
+      if (!command) {
+        throw new Error(`Empty command in ${value}`);
+      }
+      logger.debug(`Executing command: ${command}`);
+      const { stdout } = await execPromise(command, {
+        timeout: this.commandTimeout,
+        encoding: 'utf8'
+      });
+      return stdout.trim();
+    } else if (value.startsWith('${cmd:') && value.endsWith('}')) {
+      // New syntax: ${cmd: command args} - extract content and delegate
+      const content = value.slice(2, -1); // Remove ${ and }
+      return this._executeCommandContent(content);
+    } else {
+      throw new Error(`Invalid command syntax: ${value}`);
+    }
   }
 
 }

@@ -214,194 +214,284 @@ describe("EnvResolver", () => {
   });
 
   describe("Command Execution", () => {
-    it("should execute legacy $: commands", async () => {
-      mockExecPromise.mockResolvedValueOnce({ stdout: "command_output\n" });
+    describe("Command Execution", () => {
+      it("should execute ${cmd: ...} commands via _executeCommand", async () => {
+        mockExecPromise.mockResolvedValueOnce({ stdout: "secret_value\n" });
 
-      const result = await resolver._executeCommand("$: echo hello");
+        const result = await resolver._executeCommand("${cmd: op read secret}");
 
-      expect(mockExecPromise).toHaveBeenCalledWith(
-        "echo hello",
-        expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
-      );
-      expect(result).toBe("command_output");
-    });
+        expect(mockExecPromise).toHaveBeenCalledWith(
+          "op read secret",
+          expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
+        );
+        expect(result).toBe("secret_value");
+      });
 
-    it("should execute new ${cmd: ...} commands", async () => {
-      mockExecPromise.mockResolvedValueOnce({ stdout: "secret_value\n" });
+      it("should execute command content directly via _executeCommandContent", async () => {
+        mockExecPromise.mockResolvedValueOnce({ stdout: "direct_result\n" });
 
-      const result = await resolver._executeCommand("${cmd: op read secret}");
+        const result = await resolver._executeCommandContent("cmd: echo direct");
 
-      expect(mockExecPromise).toHaveBeenCalledWith(
-        "op read secret",
-        expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
-      );
-      expect(result).toBe("secret_value");
-    });
+        expect(mockExecPromise).toHaveBeenCalledWith(
+          "echo direct",
+          expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
+        );
+        expect(result).toBe("direct_result");
+      });
 
-    it("should handle command execution errors", async () => {
-      const error = new Error("Command failed");
-      mockExecPromise.mockRejectedValueOnce(error);
+      it("should handle command execution errors", async () => {
+        const error = new Error("Command failed");
+        mockExecPromise.mockRejectedValueOnce(error);
 
-      await expect(resolver._executeCommand("$: failing-command"))
-        .rejects.toThrow("Command failed");
-    });
+        await expect(resolver._executeCommand("${cmd: failing-command}"))
+          .rejects.toThrow("Command failed");
+      });
 
-    it("should handle empty commands", async () => {
-      await expect(resolver._executeCommand("${cmd: }"))
-        .rejects.toThrow("Empty command in \${cmd: }");
+      it("should handle empty commands", async () => {
+        await expect(resolver._executeCommand("${cmd: }"))
+          .rejects.toThrow("Empty command in cmd:");
 
-      await expect(resolver._executeCommand("$: "))
-        .rejects.toThrow("Empty command in $: ");
-    });
-  });
+        await expect(resolver._executeCommandContent("cmd: "))
+          .rejects.toThrow("Empty command in cmd:");
+      });
 
-  describe("Configuration Resolution", () => {
-    it("should resolve env field with null fallbacks", async () => {
-      // Set a variable in process.env that can be used as fallback
-      process.env.FALLBACK_VAR = 'fallback_value';
+      it("should support legacy $: syntax with deprecation warning", async () => {
+        mockExecPromise.mockResolvedValueOnce({ stdout: "legacy_output\n" });
 
-      const config = {
-        env: {
-          SIMPLE_VAR: "${TEST_VAR}",
-          FALLBACK_VAR: null,
-          STATIC_VAR: "static_value"
-        }
-      };
+        const result = await resolver._executeCommand("$: echo legacy");
 
-      const result = await resolver.resolveConfig(config, ['env']);
+        expect(mockExecPromise).toHaveBeenCalledWith(
+          "echo legacy",
+          expect.objectContaining({ timeout: 30000, encoding: 'utf8' })
+        );
+        expect(result).toBe("legacy_output");
+      });
 
-      expect(result.env.SIMPLE_VAR).toBe('test_value');
-      expect(result.env.FALLBACK_VAR).toBe('fallback_value'); // null falls back to process.env
-      expect(result.env.STATIC_VAR).toBe('static_value');
-
-      // Cleanup
-      delete process.env.FALLBACK_VAR;
-    });
-
-    it("should resolve args field with legacy syntax", async () => {
-      const config = {
-        env: { TOKEN: 'secret123' },
-        args: [
-          "--token", "${TOKEN}",
-          "--legacy", "$API_KEY",  // Legacy syntax
-          "--static", "value"
-        ]
-      };
-
-      const result = await resolver.resolveConfig(config, ['env', 'args']);
-
-      expect(result.args).toEqual([
-        "--token", "secret123",
-        "--legacy", "secret_key",  // From process.env.API_KEY
-        "--static", "value"
-      ]);
-    });
-
-    it("should resolve headers field", async () => {
-      mockExecPromise.mockResolvedValueOnce({ stdout: "auth_token\n" });
-
-      const config = {
-        headers: {
-          "Authorization": "Bearer ${cmd: get-token}",
-          "X-Custom": "${API_KEY}",
-          "Static": "value"
-        }
-      };
-
-      const result = await resolver.resolveConfig(config, ['headers']);
-
-      expect(result.headers).toEqual({
-        "Authorization": "Bearer auth_token",
-        "X-Custom": "secret_key",
-        "Static": "value"
+      it("should throw error for invalid command syntax", async () => {
+        await expect(resolver._executeCommand("invalid: command"))
+          .rejects.toThrow("Invalid command syntax: invalid: command");
       });
     });
 
-    it("should resolve url and command fields", async () => {
-      const config = {
-        url: "https://${API_KEY}.example.com",
-        command: "${TEST_VAR}/bin/server"
-      };
+    describe("Configuration Resolution", () => {
+      it("should resolve env field with null fallbacks", async () => {
+        // Set a variable in process.env that can be used as fallback
+        process.env.FALLBACK_VAR = 'fallback_value';
 
-      const result = await resolver.resolveConfig(config, ['url', 'command']);
+        const config = {
+          env: {
+            SIMPLE_VAR: "${TEST_VAR}",
+            FALLBACK_VAR: null,
+            STATIC_VAR: "static_value"
+          }
+        };
 
-      expect(result.url).toBe("https://secret_key.example.com");
-      expect(result.command).toBe("test_value/bin/server");
-    });
+        const result = await resolver.resolveConfig(config, ['env']);
 
-    it("should resolve env field with placeholders", async () => {
-      // Set up context variables
-      process.env.FIRST = "value1";
+        expect(result.env.SIMPLE_VAR).toBe('test_value');
+        expect(result.env.FALLBACK_VAR).toBe('fallback_value'); // null falls back to process.env
+        expect(result.env.STATIC_VAR).toBe('static_value');
 
-      const config = {
-        env: {
-          FIRST: "value1",
-          SECOND: "${FIRST}_extended"
-        }
-      };
+        // Cleanup
+        delete process.env.FALLBACK_VAR;
+      });
 
-      const result = await resolver.resolveConfig(config, ['env']);
+      it("should resolve args field with legacy syntax", async () => {
+        const config = {
+          env: { TOKEN: 'secret123' },
+          args: [
+            "--token", "${TOKEN}",
+            "--legacy", "$API_KEY",  // Legacy syntax
+            "--static", "value"
+          ]
+        };
 
-      expect(result.env.FIRST).toBe('value1');
-      expect(result.env.SECOND).toBe('value1_extended'); // Uses process.env.FIRST
+        const result = await resolver.resolveConfig(config, ['env', 'args']);
 
-      // Cleanup
-      delete process.env.FIRST;
-    });
+        expect(result.args).toEqual([
+          "--token", "secret123",
+          "--legacy", "secret_key",  // From process.env.API_KEY
+          "--static", "value"
+        ]);
+      });
 
-    it("should handle commands in env providing context for other fields", async () => {
-      mockExecPromise.mockResolvedValueOnce({ stdout: "secret_from_cmd\n" });
+      it("should resolve headers field", async () => {
+        mockExecPromise.mockResolvedValueOnce({ stdout: "auth_token\n" });
 
-      const config = {
-        env: {
-          SECRET: "${cmd: get-secret}"
-        },
-        headers: {
-          "Authorization": "Bearer ${SECRET}"
-        }
-      };
+        const config = {
+          headers: {
+            "Authorization": "Bearer ${cmd: get-token}",
+            "X-Custom": "${API_KEY}",
+            "Static": "value"
+          }
+        };
 
-      const result = await resolver.resolveConfig(config, ['env', 'headers']);
+        const result = await resolver.resolveConfig(config, ['headers']);
 
-      expect(result.env.SECRET).toBe('secret_from_cmd');
-      expect(result.headers.Authorization).toBe('Bearer secret_from_cmd');
-    });
+        expect(result.headers).toEqual({
+          "Authorization": "Bearer auth_token",
+          "X-Custom": "secret_key",
+          "Static": "value"
+        });
+      });
 
-    it("should work without env field for remote servers", async () => {
-      mockExecPromise.mockResolvedValueOnce({ stdout: "remote_token\n" });
+      it("should resolve url and command fields", async () => {
+        const config = {
+          url: "https://${API_KEY}.example.com",
+          command: "${TEST_VAR}/bin/server"
+        };
 
-      const config = {
-        url: "https://api.example.com",
-        headers: {
-          "Authorization": "Bearer ${cmd: get-remote-token}"
-        }
-      };
+        const result = await resolver.resolveConfig(config, ['url', 'command']);
 
-      const result = await resolver.resolveConfig(config, ['url', 'headers']);
+        expect(result.url).toBe("https://secret_key.example.com");
+        expect(result.command).toBe("test_value/bin/server");
+      });
 
-      expect(result.url).toBe('https://api.example.com');
-      expect(result.headers.Authorization).toBe('Bearer remote_token');
-    });
+      it("should resolve env field with placeholders", async () => {
+        // Set up context variables
+        process.env.FIRST = "value1";
 
-    it("should handle circular dependencies gracefully in non-strict mode", async () => {
-      const nonStrictResolver = new EnvResolver({ strict: false });
-      const config = {
-        env: {
-          VAR_A: "${VAR_B}",
-          VAR_B: "${VAR_A}"
-        }
-      };
+        const config = {
+          env: {
+            FIRST: "value1",
+            SECOND: "${FIRST}_extended"
+          }
+        };
 
-      const result = await nonStrictResolver.resolveConfig(config, ['env']);
+        const result = await resolver.resolveConfig(config, ['env']);
 
-      // Should fallback to original values when circular dependency detected
-      expect(result.env.VAR_A).toBe('${VAR_B}');
-      expect(result.env.VAR_B).toBe('${VAR_A}');
-    });
+        expect(result.env.FIRST).toBe('value1');
+        expect(result.env.SECOND).toBe('value1_extended'); // Uses process.env.FIRST
 
-    describe("Error Handling", () => {
-      describe("Strict Mode (Default)", () => {
-        it("should throw error on command execution failures", async () => {
+        // Cleanup
+        delete process.env.FIRST;
+      });
+
+      it("should handle commands in env providing context for other fields", async () => {
+        mockExecPromise.mockResolvedValueOnce({ stdout: "secret_from_cmd\n" });
+
+        const config = {
+          env: {
+            SECRET: "${cmd: get-secret}"
+          },
+          headers: {
+            "Authorization": "Bearer ${SECRET}"
+          }
+        };
+
+        const result = await resolver.resolveConfig(config, ['env', 'headers']);
+
+        expect(result.env.SECRET).toBe('secret_from_cmd');
+        expect(result.headers.Authorization).toBe('Bearer secret_from_cmd');
+      });
+
+      it("should work without env field for remote servers", async () => {
+        mockExecPromise.mockResolvedValueOnce({ stdout: "remote_token\n" });
+
+        const config = {
+          url: "https://api.example.com",
+          headers: {
+            "Authorization": "Bearer ${cmd: get-remote-token}"
+          }
+        };
+
+        const result = await resolver.resolveConfig(config, ['url', 'headers']);
+
+        expect(result.url).toBe('https://api.example.com');
+        expect(result.headers.Authorization).toBe('Bearer remote_token');
+      });
+
+      it("should handle circular dependencies gracefully in non-strict mode", async () => {
+        const nonStrictResolver = new EnvResolver({ strict: false });
+        const config = {
+          env: {
+            VAR_A: "${VAR_B}",
+            VAR_B: "${VAR_A}"
+          }
+        };
+
+        const result = await nonStrictResolver.resolveConfig(config, ['env']);
+
+        // Should fallback to original values when circular dependency detected
+        expect(result.env.VAR_A).toBe('${VAR_B}');
+        expect(result.env.VAR_B).toBe('${VAR_A}');
+      });
+
+      describe("Error Handling", () => {
+        describe("Strict Mode (Default)", () => {
+          it("should throw error on command execution failures", async () => {
+            mockExecPromise.mockRejectedValueOnce(new Error("Command failed"));
+
+            const config = {
+              headers: {
+                "Authorization": "Bearer ${cmd: failing-command}"
+              }
+            };
+
+            await expect(resolver.resolveConfig(config, ['headers']))
+              .rejects.toThrow("cmd execution failed: Command failed");
+          });
+
+          it("should throw error on unresolved environment variables", async () => {
+            const config = {
+              env: {
+                SIMPLE_VAR: "${UNKNOWN_VAR}"
+              }
+            };
+
+            await expect(resolver.resolveConfig(config, ['env']))
+              .rejects.toThrow("Variable 'UNKNOWN_VAR' not found");
+          });
+
+          it("should throw error on legacy syntax with missing variables", async () => {
+            const config = {
+              args: ["--token", "$UNKNOWN_LEGACY_VAR"]
+            };
+
+            await expect(resolver.resolveConfig(config, ['args']))
+              .rejects.toThrow("Legacy variable 'UNKNOWN_LEGACY_VAR' not found");
+          });
+
+          it("should detect circular dependencies eventually", async () => {
+            // Create a scenario where circular deps are detected before individual var failures
+            // Use a non-strict resolver to test the circular dependency detection logic
+            const nonStrictResolver = new EnvResolver({ strict: false });
+            const config = {
+              env: {
+                VAR_A: "${VAR_B}",
+                VAR_B: "${VAR_C}",
+                VAR_C: "${VAR_A}"
+              }
+            };
+
+            const result = await nonStrictResolver.resolveConfig(config, ['env']);
+
+            // In non-strict mode, circular dependencies should be detected and values left as-is
+            expect(result.env.VAR_A).toBe('${VAR_B}');
+            expect(result.env.VAR_B).toBe('${VAR_C}');
+            expect(result.env.VAR_C).toBe('${VAR_A}');
+          });
+
+          it("should throw error on mixed placeholders with failures", async () => {
+            const config = {
+              url: "https://${KNOWN_VAR}.${UNKNOWN_VAR}.com"
+            };
+
+            const context = { KNOWN_VAR: 'api' };
+            process.env.KNOWN_VAR = 'api';
+
+            await expect(resolver.resolveConfig(config, ['url']))
+              .rejects.toThrow("Variable 'UNKNOWN_VAR' not found");
+          });
+        });
+      })
+
+      describe("Non-Strict Mode", () => {
+        beforeEach(() => {
+          resolver = new EnvResolver({ strict: false });
+        });
+
+        it("should handle command execution failures gracefully", async () => {
           mockExecPromise.mockRejectedValueOnce(new Error("Command failed"));
 
           const config = {
@@ -410,145 +500,74 @@ describe("EnvResolver", () => {
             }
           };
 
-          await expect(resolver.resolveConfig(config, ['headers']))
-            .rejects.toThrow("cmd execution failed: Command failed");
+          const result = await resolver.resolveConfig(config, ['headers']);
+
+          // Should keep original placeholder on command failure
+          expect(result.headers.Authorization).toBe('Bearer ${cmd: failing-command}');
         });
 
-        it("should throw error on unresolved environment variables", async () => {
+        it("should handle unresolved variables gracefully", async () => {
           const config = {
             env: {
-              SIMPLE_VAR: "${UNKNOWN_VAR}"
+              SIMPLE_VAR: "${UNKNOWN_VAR}",
+              KNOWN_VAR: "${TEST_VAR}"
             }
           };
 
-          await expect(resolver.resolveConfig(config, ['env']))
-            .rejects.toThrow("Variable 'UNKNOWN_VAR' not found");
+          const result = await resolver.resolveConfig(config, ['env']);
+
+          expect(result.env.SIMPLE_VAR).toBe('${UNKNOWN_VAR}'); // Keep original
+          expect(result.env.KNOWN_VAR).toBe('test_value'); // Resolved
         });
 
-        it("should throw error on legacy syntax with missing variables", async () => {
-          const config = {
-            args: ["--token", "$UNKNOWN_LEGACY_VAR"]
-          };
-
-          await expect(resolver.resolveConfig(config, ['args']))
-            .rejects.toThrow("Legacy variable 'UNKNOWN_LEGACY_VAR' not found");
-        });
-
-        it("should detect circular dependencies eventually", async () => {
-          // Create a scenario where circular deps are detected before individual var failures
-          // Use a non-strict resolver to test the circular dependency detection logic
-          const nonStrictResolver = new EnvResolver({ strict: false });
+        it("should handle circular dependencies gracefully", async () => {
           const config = {
             env: {
               VAR_A: "${VAR_B}",
-              VAR_B: "${VAR_C}",
-              VAR_C: "${VAR_A}"
+              VAR_B: "${VAR_A}"
             }
           };
 
-          const result = await nonStrictResolver.resolveConfig(config, ['env']);
+          const result = await resolver.resolveConfig(config, ['env']);
 
-          // In non-strict mode, circular dependencies should be detected and values left as-is
+          // Should fallback to original values when circular dependency detected
           expect(result.env.VAR_A).toBe('${VAR_B}');
-          expect(result.env.VAR_B).toBe('${VAR_C}');
-          expect(result.env.VAR_C).toBe('${VAR_A}');
+          expect(result.env.VAR_B).toBe('${VAR_A}');
         });
+      });
 
-        it("should throw error on mixed placeholders with failures", async () => {
+      describe("General Error Handling", () => {
+        it("should handle non-string values gracefully", async () => {
+          // Use non-strict resolver for this test
+          const nonStrictResolver = new EnvResolver({ strict: false });
+
           const config = {
-            url: "https://${KNOWN_VAR}.${UNKNOWN_VAR}.com"
+            env: {
+              NUMBER: 123,
+              BOOLEAN: true,
+              NULL_VAL: null
+            },
+            args: ["string", 456, true]
           };
 
-          const context = { KNOWN_VAR: 'api' };
-          process.env.KNOWN_VAR = 'api';
+          const result = await nonStrictResolver.resolveConfig(config, ['env', 'args']);
 
-          await expect(resolver.resolveConfig(config, ['url']))
-            .rejects.toThrow("Variable 'UNKNOWN_VAR' not found");
+          expect(result.env.NUMBER).toBe(123);
+          expect(result.env.BOOLEAN).toBe(true);
+          expect(result.env.NULL_VAL).toBe(''); // null with no fallback in non-strict mode
+          expect(result.args).toEqual(["string", 456, true]);
         });
-      });
-    })
 
-    describe("Non-Strict Mode", () => {
-      beforeEach(() => {
-        resolver = new EnvResolver({ strict: false });
-      });
+        it("should provide clear error messages with context", async () => {
+          const config = {
+            headers: {
+              "Authorization": "Bearer ${MISSING_TOKEN}"
+            }
+          };
 
-      it("should handle command execution failures gracefully", async () => {
-        mockExecPromise.mockRejectedValueOnce(new Error("Command failed"));
-
-        const config = {
-          headers: {
-            "Authorization": "Bearer ${cmd: failing-command}"
-          }
-        };
-
-        const result = await resolver.resolveConfig(config, ['headers']);
-
-        // Should keep original placeholder on command failure
-        expect(result.headers.Authorization).toBe('Bearer ${cmd: failing-command}');
-      });
-
-      it("should handle unresolved variables gracefully", async () => {
-        const config = {
-          env: {
-            SIMPLE_VAR: "${UNKNOWN_VAR}",
-            KNOWN_VAR: "${TEST_VAR}"
-          }
-        };
-
-        const result = await resolver.resolveConfig(config, ['env']);
-
-        expect(result.env.SIMPLE_VAR).toBe('${UNKNOWN_VAR}'); // Keep original
-        expect(result.env.KNOWN_VAR).toBe('test_value'); // Resolved
-      });
-
-      it("should handle circular dependencies gracefully", async () => {
-        const config = {
-          env: {
-            VAR_A: "${VAR_B}",
-            VAR_B: "${VAR_A}"
-          }
-        };
-
-        const result = await resolver.resolveConfig(config, ['env']);
-
-        // Should fallback to original values when circular dependency detected
-        expect(result.env.VAR_A).toBe('${VAR_B}');
-        expect(result.env.VAR_B).toBe('${VAR_A}');
-      });
-    });
-
-    describe("General Error Handling", () => {
-      it("should handle non-string values gracefully", async () => {
-        // Use non-strict resolver for this test
-        const nonStrictResolver = new EnvResolver({ strict: false });
-
-        const config = {
-          env: {
-            NUMBER: 123,
-            BOOLEAN: true,
-            NULL_VAL: null
-          },
-          args: ["string", 456, true]
-        };
-
-        const result = await nonStrictResolver.resolveConfig(config, ['env', 'args']);
-
-        expect(result.env.NUMBER).toBe(123);
-        expect(result.env.BOOLEAN).toBe(true);
-        expect(result.env.NULL_VAL).toBe(''); // null with no fallback in non-strict mode
-        expect(result.args).toEqual(["string", 456, true]);
-      });
-
-      it("should provide clear error messages with context", async () => {
-        const config = {
-          headers: {
-            "Authorization": "Bearer ${MISSING_TOKEN}"
-          }
-        };
-
-        await expect(resolver.resolveConfig(config, ['headers']))
-          .rejects.toThrow(/Variable.*MISSING_TOKEN.*not found/);
+          await expect(resolver.resolveConfig(config, ['headers']))
+            .rejects.toThrow(/Variable.*MISSING_TOKEN.*not found/);
+        });
       });
     });
   });

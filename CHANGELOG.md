@@ -5,24 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.5] - 2025-06-18
+
+### Fixed
+
+- Fixed nested placeholder resolution in environment variables not working correctly
+
 ## [3.4.4] - 2025-06-16
 
 ### Fixed
+
 - Fixed validation issue with some resource templates not recognized properly.
 
 ## [3.4.3] - 2025-06-12
 
 ### Changed
+
 - Revert `yargs` to v17 to maintain compatibility with Node.js v18
 
 ## [3.4.2] - 2025-06-11
 
 ### Changed
+
 - Environment variable resolution now uses strict mode by default - configuration errors prevent server startup
 
 ## [3.4.1] - 2025-06-11
 
 ### Fixed
+
 - Fixed `${cmd: ...}` placeholders not working in remote server configs without an `env` field
 - Commands can now be executed in any config field (url, headers, args, command), not just env
 - Better handling of circular dependencies in environment variable resolution
@@ -30,138 +40,158 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.4.0] - 2025-06-10
 
 ### Added
+
 - **Universal `${}` Placeholder Syntax**: Centralized environment variable resolution system
   - `${ENV_VAR}` for environment variables
   - `${cmd: command args}` for command execution
   - Support across all configuration fields: `command`, `args`, `env`, `url`, `headers`
 
 ### Deprecated
+
 - Legacy `$VAR` syntax in args (use `${VAR}` instead)
 - Legacy `$: command` syntax in env (use `${cmd: command}` instead)
 - All deprecated syntax now shows deprecation warnings
 
 ### Enhanced
+
 - Updated documentation with clear examples of new universal syntax
 - Improved configuration section clarity and examples
 
 ## [3.3.5] - 2025-06-05
 
 ### Fixed
+
 - Fetching marketplace data fails with proxy or vpn using node fetch. Uses curl as fallback
 - Don't throw error if reamdeContent is empty
 
 ## [3.3.4] - 2025-06-05
 
 ### Added
+
 - MCP server configs can have a `name` field. Ideally it should be used as a displayName when present.
 
 ## [3.3.3] - 2025-06-04
 
 ### Changed
+
 - Update dependencies to latest versions
 
 ## [3.3.2] - 2025-06-04
 
 ### Changed
+
 - Locally update the hash of flake.nix and release version with all changes at a time.
 - Remove flake github workflow
 
 ## [3.3.1] - 2025-05-30
 
 ### Fixed
+
 - Use correct constant name `TOOL_LIST_CHANGED` instead of `TOOLS_CHANGED` for tool list subscription events
 
 ## [3.3.0] - 2025-05-26
 
 ### Added
+
 - Dev mode for automatic MCP server restart on file changes during development
 - New `dev` configuration field with `enabled`, `watch`, and `cwd` options
-- File watching with glob pattern support for universal project compatibility  
+- File watching with glob pattern support for universal project compatibility
 
 ## [3.2.0] - 2025-05-24
 
 ### Added
-- /tools, /resources, /prompts endpoints accept request_options in the body which will be used when calling tools, resources and prompts. 
+
+- /tools, /resources, /prompts endpoints accept request_options in the body which will be used when calling tools, resources and prompts.
 
 ## [3.1.11] - 2025-05-16
 
 ### Fixed
+
 - Warn instead of throwing error for MCP Server stderr output
 
 ## [3.1.10] - 2025-05-06
 
 ### Fixed
+
 - Remove log statement
 
 ## [3.1.9] - 2025-05-06
 
 ### Added
+
 - Support for `$: cmd arg1 arg2` syntax in env config to execute shell commands to resolve env values
-- E.g 
+- E.g
 
 ```json
 {
-    "command": "npx",
-    "args": [
-      "-y",
-      "@modelcontextprotocol/server-everything"
-    ],
-    "env": {
-        "MY_ENV_VAR": "$: cmd:op read op://mysecret/myenvvar"
-    }
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-everything"],
+  "env": {
+    "MY_ENV_VAR": "$: cmd:op read op://mysecret/myenvvar"
+  }
 }
 ```
 
 ## [3.1.8] - 2025-05-03
 
 ### Changed
+
 - Update open and @modelcontextprotocol/sdk to latest versions
 
 ## [3.1.7] - 2025-04-30
 
 ### Fixed
-- Refetch marketplace catalog if empty
 
+- Refetch marketplace catalog if empty
 
 ## [3.1.6] - 2025-04-25
 
 ### Added
+
 - /hard-restart endpoint
 
 ### Changed
+
 - Reverted express v5 to v4
 
 ## [3.1.5] - 2025-04-25
 
 ### Fixed
+
 - Subscribed to notifications from a server even after it was stopped
 
 ### Changed
+
 - Updated dependencies to their latest versions
 
 ## [3.1.4] - 2025-04-24
 
 ### Added
+
 - Can use "Bearer ${SOME_OTHER_ENV}" in headers field of remote MCP server config
 
 ## [3.1.3] - 2025-04-24
 
 ### Added
+
 - Can use "ENV_VAR": "${SOME_OTHER_ENV}" in env field in server config
 
 ## [3.1.2] - 2025-04-23
 
 ### Fixed
+
 - start and stop behavior for servers broken
 
 ## [3.1.1] - 2025-04-23
 
 ### Fixed
+
 - False positive modified triggers when env field is falsy due to lack of deep cloning
 
 ## [3.1.0] - 2025-04-23
 
 ### Added
+
 - Support for MCP 2025-03-26 specification
 - Primary streamable-http transport for remote servers
 - SSE fallback transport support
@@ -171,54 +201,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.0.5] - 2025-04-21
 
 ### Added
+
 - replaces args that start with `$` like `$ENV_VAR` with actual env var value.
 - Need to mention ENV_VAR in the "env" field in server config to avoid any side-effects
 
 ## [3.0.4] - 2025-04-20
 
 ### Fixed
+
 - handle config changes in parallel in case one fails others should not fail
 - Starting a connection not updating it's config properly
 
 ## [3.0.3] - 2025-04-14
 
 ### Fixed
-- send SERVERS_UPDATED event for servers start and stop endpoints
 
+- send SERVERS_UPDATED event for servers start and stop endpoints
 
 ## [3.0.2] - 2025-04-13
 
 ### Fixed
-- insignificant changes emiting importantChangesHandled event
 
+- insignificant changes emiting importantChangesHandled event
 
 ## [3.0.1] - 2025-04-13
 
 ### Fixed
+
 - Improved file watching reliability across different editors
 - Fixed issue with Neovim file watching not triggering after first change
 - Enhanced cleanup of file watchers during shutdown
 - Added proper resource cleanup for file watchers
 
-
 ## [3.0.0] - 2025-04-13
 
 ### Breaking Changes
+
 - Removed client registration/unregistration API endpoints
 - All clients now connect directly via SSE at /api/events
 - Simplified client connection management to SSE-only model
 
 ### Added
+
 - Enhanced SSE client connection tracking
 - Improved client event notifications
 - More detailed connection metrics in health endpoint
 - Better documentation with updated architecture diagrams
 
 ### Enhanced
+
 - Improved --watch to only update affected servers on config changes
 - Smarter config watching with better change detection
 
 ### Changed
+
 - Logging system now writes to ~/.mcp-hub/logs/mcp-hub.log
 
 ## [2.2.0] - 2025-04-10
@@ -227,8 +263,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - mcp-hub stays up running even when all clients disconnect unless `--auto-shutdown` is provided
 - Helpful for running mcp-hub as systemd or separate process to avoid
-frequent startups
-
+  frequent startups
 
 ## [2.1.1] - 2025-04-07
 
@@ -435,6 +470,3 @@ frequent startups
 - API documentation
 - Example implementations
 - Test suite with high coverage
-
-
-
