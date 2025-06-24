@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] - 2025-06-24
+
+### Added
+
+- **Unified MCP Server Endpoint**: New /mcp endpoint that exposes all capabilities from managed servers
+  - Single endpoint for all MCP clients (Claude Desktop, Cline, etc.) to connect to
+  - Automatic namespacing of capabilities to prevent conflicts between servers
+  - Real-time capability synchronization when servers are added/removed/restarted
+  - Support for tools, resources, resource templates, and prompts from all servers
+
+### Enhanced
+
+- Added comprehensive health monitoring with MCP endpoint statistics
+- Improved capability change detection with efficient key-based comparison
+- Added detailed documentation explaining the unified server approach
+
+### Changed
+
+- Refactored capability synchronization for better performance
+- Simplified capability change detection by removing complex deep comparisons
+
 ## [3.5.0] - 2025-06-24
 
 ### Added
@@ -477,4 +498,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API documentation
 - Example implementations
 - Test suite with high coverage
+
 

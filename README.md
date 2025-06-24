@@ -4,7 +4,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-MCP Hub acts as a central coordinator between clients and multiple MCP servers, making it easy to utilize capabilities from multiple servers through a single interface. Implements [MCP 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26) specification.
+MCP Hub acts as a central coordinator for MCP servers and clients, providing two key interfaces:
+
+1. **Management Interface** (/api/*): Manage multiple MCP servers through a unified REST API and web UI
+2. **MCP Server Interface** (/mcp): Connect ANY MCP client to access ALL server capabilities through a single endpoint
+
+This dual-interface approach means you can manage servers through the Hub's UI while MCP clients (Claude Desktop, Cline, etc.) only need to connect to one endpoint (`localhost:37373/mcp`) to access all capabilities. Implements [MCP 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26) specification.
 
 ## Feature Support
 
@@ -41,7 +46,33 @@ MCP Hub acts as a central coordinator between clients and multiple MCP servers, 
 | **Configuration** ||||
 | | `${}` Syntax | ✅ | Environment variables and command execution across all fields |
 
+## Simplified Client Configuration
+
+Configure all MCP clients with just one endpoint:
+```json
+{
+    "mcpServers" : {
+        "Hub": {
+            "url" : "http://localhost:37373/mcp"  
+        }
+    }
+}
+```
+
+The Hub automatically:
+- Namespaces capabilities to prevent conflicts (e.g., `filesystem__search` vs `database__search`)
+- Routes requests to the appropriate server
+- Updates capabilities in real-time when servers are added/removed
+- Handles authentication and connection management
+
 ## Key Features
+
+- **Unified MCP Server Endpoint** (/mcp):
+  - Single endpoint for ALL MCP clients to connect to
+  - Access capabilities from all managed servers through one connection
+  - Automatic namespacing prevents conflicts between servers
+  - Real-time capability updates when servers change
+  - Simplified client configuration - just one endpoint instead of many
 
 - **Dynamic Server Management**:
   - Start, stop, enable/disable servers on demand
@@ -977,5 +1008,9 @@ All client requests follow a standardized flow:
 ## Acknowledgements
 
 - [Cline mcp-marketplace](https://github.com/cline/mcp-marketplace) - For providing the MCP server marketplace endpoints that power MCP Hub's marketplace integration
+
+
+
+
 
 
