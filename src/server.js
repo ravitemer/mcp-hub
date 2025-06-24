@@ -658,7 +658,52 @@ registerRoute(
   }
 )
 
+//For cases where mcp-hub is running on a remote system and the oauth callback points to localhost
+registerRoute(
+  "POST",
+  "/oauth/manual_callback",
+  "Handle OAuth callback for manual authorization",
+  async (req, res) => {
+    let code, server_name
+    try {
 
+    const {url} = req.body || {}
+    if (!url) {
+      throw new ValidationError("Missing URL parameter", { field: "url" });
+    }
+    const url_with_code = new URL(url)
+    if (url_with_code.searchParams.has('code')) {
+      code = url_with_code.searchParams.get('code')
+    }
+    if (url_with_code.searchParams.has('server_name')) {
+      server_name = url_with_code.searchParams.get('server_name')
+    }
+      if (!code || !server_name) {
+        throw new ValidationError("Missing code or server_name parameter");
+      }
+      //simulate delay
+      // await new Promise(resolve => setTimeout(resolve, 3000));
+      const connection = serviceManager.mcpHub.getConnection(server_name);
+      await connection.handleAuthCallback(code)
+      // // Still broadcast the update for consistency
+      serviceManager.broadcastSubscriptionEvent(SubscriptionTypes.SERVERS_UPDATED, {
+        changes: {
+          modified: [server_name],
+        }
+      });
+      return res.json({
+        status: "ok",
+        message: `Authorization successful for server '${server_name}'`,
+        server_name,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw wrapError(error, "MANUAL_OAUTH_CALLBACK_ERROR", {
+        url: req.body?.url || null,
+      });
+    } 
+  }
+)
 registerRoute(
   "GET",
   "/oauth/callback",
@@ -719,7 +764,6 @@ registerRoute(
 
       const connection = serviceManager.mcpHub.getConnection(server_name);
 
-      // Process authentication asynchronously
       await connection.handleAuthCallback(code)
       res.write('<script>updateStatus("success");</script>');
 
