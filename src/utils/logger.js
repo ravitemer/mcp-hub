@@ -1,12 +1,12 @@
 import fs from "fs";
 import path from "path";
-import os from "os";
+import { getLogDirectory } from "./xdg-paths.js";
 
 /**
  * Logger class that handles both file and console logging with structured JSON output
  */
 
-const LOG_DIR = path.join(os.homedir(), ".mcp-hub", "logs");
+const LOG_DIR = getLogDirectory();
 const LOG_FILE = "mcp-hub.log";
 class Logger {
   constructor(options = {}) {

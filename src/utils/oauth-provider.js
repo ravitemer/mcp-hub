@@ -5,14 +5,14 @@
 import logger from "./logger.js";
 import fs from 'fs/promises';
 import path from 'path';
-import os from 'os';
+import { getDataDirectory } from "./xdg-paths.js";
 
 // File level storage
 let serversStorage = {};
 
 class StorageManager {
   constructor() {
-    this.path = path.join(os.homedir(), '.mcp-hub', 'oauth-storage.json');
+    this.path = path.join(getDataDirectory(), 'oauth-storage.json');
   }
 
   async init() {

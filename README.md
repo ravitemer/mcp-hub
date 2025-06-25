@@ -752,7 +752,10 @@ MCP Hub emits several types of events:
 
 ## Logging
 
-MCP Hub uses structured JSON logging for all events. Logs are written to both console and file at `~/.mcp-hub/logs/mcp-hub.log`:
+MCP Hub uses structured JSON logging for all events. Logs are written to both console and file following XDG Base Directory Specification:
+
+- **XDG compliant**: `$XDG_STATE_HOME/mcp-hub/logs/mcp-hub.log` (typically `~/.local/state/mcp-hub/logs/mcp-hub.log`)
+- **Legacy fallback**: `~/.mcp-hub/logs/mcp-hub.log` (for backward compatibility)
 
 ```json
 {

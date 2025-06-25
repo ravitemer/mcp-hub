@@ -1,10 +1,10 @@
 import fs from "fs/promises";
 import path from "path";
-import os from "os";
 import { promisify } from "util";
 import { exec as execCb } from "child_process";
 import logger from "./utils/logger.js";
 import { MCPHubError } from "./utils/errors.js";
+import { getCacheDirectory } from "./utils/xdg-paths.js";
 
 const exec = promisify(execCb);
 
@@ -77,7 +77,7 @@ async function fetchWithFallback(url, options = {}) {
 
 //TODO: implement sort of custom database for reliability instead of using cline mcp-marketplace
 const API_BASE_URL = "https://api.cline.bot/v1/mcp";
-const CACHE_DIR = path.join(os.homedir(), ".mcp-hub", "cache");
+const CACHE_DIR = getCacheDirectory();
 const CACHE_FILE = "marketplace.json";
 const DEFAULT_TTL = 24 * 60 * 60 * 1000; // 1 day in milliseconds
 
