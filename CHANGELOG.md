@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **XDG Base Directory Specification Support**: Migrated from hardcoded ~/.mcp-hub paths to XDG-compliant directories
   - Marketplace cache now uses XDG data directory (`~/.local/share/mcp-hub/cache`)
   - Logs now use XDG state directory (`~/.local/state/mcp-hub/logs`)
-  - OAuth storage now uses XDG data directory (`~/.local/share/mcp-hub/oauth`)
+  - OAuth storage now uses XDG data directory (`~/.local/share/mcp-hub/oauth-storage.json`)
   - Backward compatibility maintained for existing ~/.mcp-hub installations
   - New XDG paths utility module with automatic fallback logic
 
