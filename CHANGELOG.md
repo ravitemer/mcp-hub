@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2025-06-26
+
+### Added
+
+- **XDG Base Directory Specification Support**: Migrated from hardcoded ~/.mcp-hub paths to XDG-compliant directories
+  - Marketplace cache now uses XDG data directory (`~/.local/share/mcp-hub/cache`)
+  - Logs now use XDG state directory (`~/.local/state/mcp-hub/logs`)
+  - OAuth storage now uses XDG data directory (`~/.local/share/mcp-hub/oauth`)
+  - Backward compatibility maintained for existing ~/.mcp-hub installations
+  - New XDG paths utility module with automatic fallback logic
+
+### Enhanced
+
+- Updated documentation to reflect new XDG-compliant path structure
+- Improved file organization following Linux filesystem standards
+
 ## [3.6.0] - 2025-06-24
 
 ### Added
@@ -498,5 +514,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API documentation
 - Example implementations
 - Test suite with high coverage
+
 
 
