@@ -670,6 +670,7 @@ export class MCPConnection extends EventEmitter {
     };
 
     const transport = new StdioClientTransport({
+      cwd: resolvedConfig.cwd,
       command: resolvedConfig.command, // Now supports ${} placeholders too!
       args: resolvedConfig.args,       // Supports both ${} and legacy $VAR
       env: serverEnv,
@@ -838,8 +839,3 @@ export class MCPConnection extends EventEmitter {
     await this.connect(currentConfig);
   }
 }
-
-
-
-
-

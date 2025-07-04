@@ -216,6 +216,7 @@ For running script-based MCP servers locally:
 - **command**: Command to start the MCP server executable (supports `${VARIABLE}` and `${cmd: command}`)
 - **args**: Array of command line arguments (supports `${VARIABLE}` and `${cmd: command}` placeholders)
 - **env**: Environment variables with placeholder resolution and system fallback
+- **cwd**: The cwd for process spawning the MCP server
 - **dev**: Development mode configuration (optional)
   - **enabled**: Enable/disable dev mode (default: true)
   - **watch**: Array of glob patterns to watch for changes (default: ["**/*.js", "**/*.ts", "**/*.json"])
@@ -1011,9 +1012,3 @@ All client requests follow a standardized flow:
 ## Acknowledgements
 
 - [Cline mcp-marketplace](https://github.com/cline/mcp-marketplace) - For providing the MCP server marketplace endpoints that power MCP Hub's marketplace integration
-
-
-
-
-
-
