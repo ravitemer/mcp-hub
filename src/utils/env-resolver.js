@@ -24,7 +24,7 @@ export class EnvResolver {
    * @param {Array} fieldsToResolve - Fields that should be resolved ['env', 'args', 'headers', 'url', 'command']
    * @returns {Object} - Resolved configuration
    */
-  async resolveConfig(config, fieldsToResolve = ['env', 'args', 'headers', 'url', 'command']) {
+  async resolveConfig(config, fieldsToResolve = ['env', 'args', 'headers', 'url', 'command', 'cwd']) {
     const resolved = JSON.parse(JSON.stringify(config)); // Deep clone
 
     // Start with process.env as base context
@@ -92,7 +92,7 @@ export class EnvResolver {
       return resolved;
     }
 
-    if ((fieldType === 'url' || fieldType === 'command') && typeof fieldValue === 'string') {
+    if ((fieldType === 'url' || fieldType === 'command' || fieldType === 'cwd') && typeof fieldValue === 'string') {
       return await this._resolveStringWithPlaceholders(fieldValue, context);
     }
 

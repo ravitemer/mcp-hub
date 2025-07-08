@@ -160,7 +160,7 @@ export class MCPConnection extends EventEmitter {
 
       // Resolve config once for all transport types
       const resolvedConfig = await envResolver.resolveConfig(this.config, [
-        'env', 'args', 'command', 'url', 'headers'
+        'env', 'args', 'command', 'url', 'headers', 'cwd'
       ]);
 
       try {
