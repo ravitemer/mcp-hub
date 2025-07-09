@@ -488,16 +488,20 @@ Response:
 
 ```json
 {
-  "items": [
+  "servers": [
     {
-      "mcpId": "github.com/user/repo/server",
+      "id": "example-server",
       "name": "Example Server",
       "description": "Description here",
+      "author": "example-author",
+      "url": "https://github.com/user/repo",
       "category": "search",
       "tags": ["search", "ai"],
-      "githubStars": 100,
-      "isRecommended": true,
-      "createdAt": "2024-02-20T05:55:00.000Z"
+      "stars": 100,
+      "featured": true,
+      "verified": true,
+      "lastCommit": 1751257963,
+      "updatedAt": 1751265038
     }
   ],
   "timestamp": "2024-02-20T05:55:00.000Z"
@@ -511,7 +515,7 @@ POST /api/marketplace/details
 Content-Type: application/json
 
 {
-  "mcpId": "github.com/user/repo/server"
+  "mcpId": "example-server"
 }
 ```
 
@@ -520,13 +524,21 @@ Response:
 ```json
 {
   "server": {
-    "mcpId": "github.com/user/repo/server",
+    "id": "example-server",
     "name": "Example Server",
     "description": "Description here",
-    "githubUrl": "https://github.com/user/repo",
-    "readmeContent": "# Server Documentation...",
-    "llmsInstallationContent": "Installation guide..."
+    "author": "example-author",
+    "url": "https://github.com/user/repo",
+    "category": "search",
+    "tags": ["search", "ai"],
+    "installations": [],
+    "stars": 100,
+    "featured": true,
+    "verified": true,
+    "lastCommit": 1751257963,
+    "updatedAt": 1751265038
   },
+  "readmeContent": "# Server Documentation...",
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
@@ -1004,6 +1016,18 @@ All client requests follow a standardized flow:
 ## Requirements
 
 - Node.js >= 18.0.0
+
+## MCP Registry
+
+MCP Hub now uses the [MCP Registry](https://github.com/ravitemer/mcp-registry) system for marketplace functionality. This provides:
+
+- **Decentralized Server Discovery**: Registry hosted on GitHub Pages for better reliability
+- **Direct GitHub Integration**: README documentation fetched directly from repositories
+- **Enhanced Metadata**: Comprehensive server information including stars, categories, and installation instructions
+- **Better Caching**: Improved cache system with 1-hour TTL for frequent updates
+- **Fallback Support**: Automatic fallback to curl when fetch fails (useful for proxy/VPN environments)
+
+The registry is updated regularly with new servers and improvements to existing entries.
 
 ## Todo
 

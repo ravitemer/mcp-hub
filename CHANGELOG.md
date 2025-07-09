@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [4.0.0] - 2025-07-09
+
+### Breaking Changes
+
+- **Marketplace Migration**: Migrated from Cline marketplace API to MCP Registry system
+  - Marketplace API response now returns `servers` instead of `items`
+  - Server objects use new schema with `id` instead of `mcpId`
+  - Field names changed: `githubStars` → `stars`, `createdAt` → `lastCommit`
+  - New registry endpoint: `https://ravitemer.github.io/mcp-registry/registry.json`
+  - Server details now include `readmeContent` fetched directly from GitHub repositories
+
+### Changed
+
+- **Cache System Overhaul**: Restructured cache format for better performance
+  - Cache TTL reduced from 24 hours to 1 hour for more frequent updates
+  - New cache structure: `{ registry, lastFetchedAt, serverDocumentation }`
+  - Better error handling and fallback mechanisms for network failures
+
+### Added
+- **Enhanced Test Coverage**: Comprehensive test suite for new registry system
+  - Tests for new data structures and API responses
+  - Network error handling and fallback testing
+  - Documentation fetching and caching tests
+
 ## [3.7.2] - 2025-07-08
 
 ### Added
