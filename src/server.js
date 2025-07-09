@@ -97,9 +97,7 @@ class ServiceManager {
     logger.info("Initializing marketplace catalog");
     marketplace = getMarketplace();
     await marketplace.initialize();
-    logger.info("Marketplace initialized", {
-      catalogItems: marketplace.cache.catalog.items.length,
-    });
+    logger.info(`Marketplace initialized with ${marketplace.cache.registry?.servers?.length || 0}`);
 
     // Then initialize MCP Hub
     logger.info("Initializing MCP Hub");
@@ -355,14 +353,14 @@ registerRoute(
   async (req, res) => {
     const { search, category, tags, sort } = req.query;
     try {
-      const items = await marketplace.getCatalog({
+      const servers = await marketplace.getCatalog({
         search,
         category,
         tags: tags ? tags.split(",") : undefined,
         sort,
       });
       res.json({
-        items,
+        servers,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
@@ -732,17 +730,17 @@ registerRoute(
     let code, server_name
     try {
 
-    const {url} = req.body || {}
-    if (!url) {
-      throw new ValidationError("Missing URL parameter", { field: "url" });
-    }
-    const url_with_code = new URL(url)
-    if (url_with_code.searchParams.has('code')) {
-      code = url_with_code.searchParams.get('code')
-    }
-    if (url_with_code.searchParams.has('server_name')) {
-      server_name = url_with_code.searchParams.get('server_name')
-    }
+      const { url } = req.body || {}
+      if (!url) {
+        throw new ValidationError("Missing URL parameter", { field: "url" });
+      }
+      const url_with_code = new URL(url)
+      if (url_with_code.searchParams.has('code')) {
+        code = url_with_code.searchParams.get('code')
+      }
+      if (url_with_code.searchParams.has('server_name')) {
+        server_name = url_with_code.searchParams.get('server_name')
+      }
       if (!code || !server_name) {
         throw new ValidationError("Missing code or server_name parameter");
       }
@@ -766,7 +764,7 @@ registerRoute(
       throw wrapError(error, "MANUAL_OAUTH_CALLBACK_ERROR", {
         url: req.body?.url || null,
       });
-    } 
+    }
   }
 )
 registerRoute(

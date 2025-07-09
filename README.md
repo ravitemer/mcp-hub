@@ -1007,8 +1007,10 @@ All client requests follow a standardized flow:
 
 ## Todo
 
-- [ ] Implement custom marketplace rather than depending on mcp-marketplace
+- [x] Implement custom marketplace rather than depending on mcp-marketplace
+- [ ] TUI like mcphub.nvim
+- [ ] Web UI for managing servers
 
 ## Acknowledgements
 
-- [Cline mcp-marketplace](https://github.com/cline/mcp-marketplace) - For providing the MCP server marketplace endpoints that power MCP Hub's marketplace integration
+- [ravitemer/mcp-registry](https://github.com/ravitemer/mcp-registry) - For providing the MCP server marketplace endpoints that power MCP Hub's marketplace integration
