@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ravitemer-mcp-hub-badge.png)](https://mseep.ai/app/ravitemer-mcp-hub)
+
 # MCP Hub 
 
 [![npm version](https://badge.fury.io/js/mcp-hub.svg)](https://www.npmjs.com/package/mcp-hub)
