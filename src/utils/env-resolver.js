@@ -19,6 +19,28 @@ export class EnvResolver {
   }
 
   /**
+   * Parse global environment variables from MCP_HUB_ENV
+   * @returns {Object} - Parsed global environment variables
+   */
+  _parseGlobalEnv() {
+    try {
+      const globalEnvJson = process.env.MCP_HUB_ENV;
+      if (!globalEnvJson) return {};
+
+      const globalEnv = JSON.parse(globalEnvJson);
+      if (typeof globalEnv !== 'object' || globalEnv === null) {
+        logger.warn('MCP_HUB_ENV is not a valid object');
+        return {};
+      }
+
+      return globalEnv;
+    } catch (error) {
+      logger.warn(`Failed to parse MCP_HUB_ENV: ${error.message}`);
+      return {};
+    }
+  }
+
+  /**
    * Resolve all placeholders in a configuration object
    * @param {Object} config - Configuration object with fields to resolve
    * @param {Array} fieldsToResolve - Fields that should be resolved ['env', 'args', 'headers', 'url', 'command']
@@ -27,13 +49,14 @@ export class EnvResolver {
   async resolveConfig(config, fieldsToResolve = ['env', 'args', 'headers', 'url', 'command', 'cwd']) {
     const resolved = JSON.parse(JSON.stringify(config)); // Deep clone
 
-    // Start with process.env as base context
-    let context = { ...process.env };
+    // Build context with correct priority: process.env → globalEnv
+    const globalEnv = this._parseGlobalEnv();
+    let context = { ...process.env, ...globalEnv };
 
     // Resolve env field first if present (provides context for other fields)
     if (resolved.env && fieldsToResolve.includes('env')) {
       resolved.env = await this._resolveFieldUniversal(resolved.env, context, 'env');
-      // Update context with resolved env values
+      // Update context with resolved env values (server-specific config wins over global)
       context = { ...context, ...resolved.env };
     }
 
@@ -43,6 +66,12 @@ export class EnvResolver {
         resolved[field] = await this._resolveFieldUniversal(resolved[field], context, field);
       }
     }
+
+    // Merge global env with resolved server env (server config wins)
+    resolved.env = {
+      ...globalEnv,
+      ...resolved.env
+    };
 
     return resolved;
   }

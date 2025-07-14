@@ -222,6 +222,16 @@ For running script-based MCP servers locally:
   - **watch**: Array of glob patterns to watch for changes (default: ["**/*.js", "**/*.ts", "**/*.json"])
   - **cwd**: **Required** absolute path to the server's working directory for file watching
 
+##### Global Environment Variables (`MCP_HUB_ENV`)
+
+MCP Hub will look for the environment variable `MCP_HUB_ENV` (a JSON string) in its own process environment. If set, all key-value pairs from this variable will be injected into the environment of every managed MCP server (both stdio and remote). This is useful for passing secrets, tokens, or other shared configuration to all servers without repeating them in each server config.
+
+- Server-specific `env` fields always override values from `MCP_HUB_ENV`.
+- Example usage:
+  ```sh
+  MCP_HUB_ENV='{"DBUS_SESSION_BUS_ADDRESS":"/run/user/1000/bus","MY_TOKEN":"abc"}' mcp-hub --port 3000 --config path/to/config.json
+  ```
+
 #### Remote Server Options
 
 For connecting to remote MCP servers:

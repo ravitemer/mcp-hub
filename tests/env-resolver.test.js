@@ -75,6 +75,99 @@ describe("EnvResolver", () => {
     });
   });
 
+  describe("Global Environment Support", () => {
+    it("should parse global environment from MCP_HUB_ENV", () => {
+      process.env.MCP_HUB_ENV = JSON.stringify({
+        GLOBAL_VAR1: 'global_value1',
+        GLOBAL_VAR2: 'global_value2'
+      });
+
+      const globalEnv = resolver._parseGlobalEnv();
+
+      expect(globalEnv).toEqual({
+        GLOBAL_VAR1: 'global_value1',
+        GLOBAL_VAR2: 'global_value2'
+      });
+    });
+
+    it("should return empty object when MCP_HUB_ENV is not set", () => {
+      delete process.env.MCP_HUB_ENV;
+
+      const globalEnv = resolver._parseGlobalEnv();
+
+      expect(globalEnv).toEqual({});
+    });
+
+    it("should handle invalid JSON in MCP_HUB_ENV gracefully", () => {
+      process.env.MCP_HUB_ENV = 'invalid json';
+
+      const globalEnv = resolver._parseGlobalEnv();
+
+      expect(globalEnv).toEqual({});
+    });
+
+    it("should include global env in context with correct priority", async () => {
+      process.env.MCP_HUB_ENV = JSON.stringify({
+        GLOBAL_VAR: 'global_value',
+        SHARED_VAR: 'from_global'
+      });
+
+      const config = {
+        env: {
+          SERVER_VAR: 'server_value',
+          SHARED_VAR: 'from_server'  // Should override global
+        }
+      };
+
+      const result = await resolver.resolveConfig(config, ['env']);
+
+      // Check final merged env has correct priority
+      expect(result.env.GLOBAL_VAR).toBe('global_value');    // From global
+      expect(result.env.SERVER_VAR).toBe('server_value');    // From server
+      expect(result.env.SHARED_VAR).toBe('from_server');     // Server overrides global
+    });
+
+    it("should make global env available for placeholder resolution", async () => {
+      process.env.MCP_HUB_ENV = JSON.stringify({
+        BASE_URL: 'https://api.example.com',
+        TOKEN: 'global_token'
+      });
+
+      const config = {
+        url: "${BASE_URL}/v1",
+        headers: {
+          "Authorization": "Bearer ${TOKEN}"
+        }
+      };
+
+      const result = await resolver.resolveConfig(config, ['url', 'headers']);
+
+      expect(result.url).toBe('https://api.example.com/v1');
+      expect(result.headers.Authorization).toBe('Bearer global_token');
+    });
+
+    it("should work when no server env is specified", async () => {
+      process.env.MCP_HUB_ENV = JSON.stringify({
+        GLOBAL_VAR1: 'value1',
+        GLOBAL_VAR2: 'value2'
+      });
+
+      const config = {
+        url: "${GLOBAL_VAR1}",
+        command: "server-${GLOBAL_VAR2}"
+      };
+
+      const result = await resolver.resolveConfig(config, ['url', 'command']);
+
+      expect(result.env).toEqual({
+        GLOBAL_VAR1: 'value1',
+        GLOBAL_VAR2: 'value2'
+      });
+      expect(result.url).toBe('value1');
+      expect(result.command).toBe('server-value2');
+    });
+  });
+
   describe("String Placeholder Resolution", () => {
     it("should resolve simple environment variables", async () => {
       const context = { TEST_VAR: 'resolved_value', API_KEY: 'secret' };

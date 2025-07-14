@@ -665,7 +665,6 @@ export class MCPConnection extends EventEmitter {
     const serverEnv = {
       // INFO: getDefaultEnvironment is imp in order to start mcp servers properly
       ...getDefaultEnvironment(),
-      ...(process.env.MCP_ENV_VARS ? JSON.parse(process.env.MCP_ENV_VARS) : {}),
       ...resolvedConfig.env,
     };
 
