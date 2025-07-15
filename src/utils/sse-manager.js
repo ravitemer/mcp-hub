@@ -29,7 +29,8 @@ export const SubscriptionTypes = {
   SERVERS_UPDATED: 'servers_updated',
   TOOL_LIST_CHANGED: 'tool_list_changed',
   RESOURCE_LIST_CHANGED: 'resource_list_changed',
-  PROMPT_LIST_CHANGED: 'prompt_list_changed'
+  PROMPT_LIST_CHANGED: 'prompt_list_changed',
+  WORKSPACES_UPDATED: 'workspaces_updated'
 }
 
 /**

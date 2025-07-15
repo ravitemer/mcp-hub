@@ -7,18 +7,20 @@ import { ConfigError, wrapError } from "./errors.js";
 import deepEqual from "fast-deep-equal";
 export class ConfigManager extends EventEmitter {
   // Key fields to compare for server config changes
-  #KEY_FIELDS = ['command', 'args', 'env', 'disabled', 'url', 'headers', 'dev', 'name', 'cwd'];
+  #KEY_FIELDS = ['command', 'args', 'env', 'disabled', 'url', 'headers', 'dev', 'name', 'cwd', 'config_source'];
   #previousConfig = null;
   #watcher = null;
 
   constructor(configPathOrObject) {
     super();
-    this.configPath = null;
+    this.configPaths = null;
     this.config = null;
     this.watcher = null;
 
     if (typeof configPathOrObject === "string") {
-      this.configPath = configPathOrObject;
+      this.configPaths = [configPathOrObject];
+    } else if (Array.isArray(configPathOrObject)) {
+      this.configPaths = configPathOrObject;
     } else if (configPathOrObject && typeof configPathOrObject === "object") {
       this.config = configPathOrObject;
       this.#previousConfig = JSON.parse(JSON.stringify(configPathOrObject));
@@ -87,7 +89,11 @@ export class ConfigManager extends EventEmitter {
   async updateConfig(newConfigOrPath) {
     if (typeof newConfigOrPath === "string") {
       // Update config path and reload
-      this.configPath = newConfigOrPath;
+      this.configPaths = [newConfigOrPath];
+      await this.loadConfig();
+    } else if (Array.isArray(newConfigOrPath)) {
+      // Update config paths and reload
+      this.configPaths = newConfigOrPath;
       await this.loadConfig();
     } else if (newConfigOrPath && typeof newConfigOrPath === "object") {
       // Update config directly with deep clone for previousConfig
@@ -97,20 +103,49 @@ export class ConfigManager extends EventEmitter {
   }
 
   async loadConfig() {
-    if (!this.configPath) {
-      throw new ConfigError("No config path specified");
+    if (!this.configPaths || this.configPaths.length === 0) {
+      throw new ConfigError("No config paths specified");
     }
 
     try {
-      const content = await fs.readFile(this.configPath, "utf-8");
-      const newConfig = JSON.parse(content);
+      // Load and merge all config files
+      let mergedConfig = { mcpServers: {} };
 
-      // Validate config structure
-      if (!newConfig.mcpServers || typeof newConfig.mcpServers !== "object") {
-        throw new ConfigError("Missing or invalid mcpServers configuration", {
-          config: newConfig,
-        });
+      for (const configPath of this.configPaths) {
+        try {
+          const content = await fs.readFile(configPath, "utf-8");
+          const config = JSON.parse(content);
+
+          // Merge the config - mcpServers from later files override earlier ones
+          if (config.mcpServers && typeof config.mcpServers === "object") {
+            // Add config_source to each server config before merging
+            Object.entries(config.mcpServers).forEach(([serverName, serverConfig]) => {
+              mergedConfig.mcpServers[serverName] = {
+                ...serverConfig,
+                config_source: configPath // Track which file this server came from
+              };
+            });
+          }
+
+          // For other top-level properties, later config files override earlier ones
+          Object.keys(config).forEach(key => {
+            if (key !== 'mcpServers') {
+              mergedConfig[key] = config[key];
+            }
+          });
+        } catch (error) {
+          if (error.code === 'ENOENT') {
+            logger.debug(`Config file not found, skipping: ${configPath}`);
+            continue; // Skip missing files
+          }
+          throw new ConfigError(`Failed to load config from ${configPath}: ${error.message}`, {
+            configPath,
+            error: error.message
+          });
+        }
       }
+
+      const newConfig = mergedConfig;
 
       // Validate each server configuration
       for (const [name, server] of Object.entries(newConfig.mcpServers)) {
@@ -203,16 +238,7 @@ export class ConfigManager extends EventEmitter {
       this.config = newConfig;
       this.#previousConfig = JSON.parse(JSON.stringify(newConfig));
 
-      logger.debug(`Config loaded successfully from ${this.configPath}`, {
-        path: this.configPath,
-        serverCount: Object.keys(newConfig.mcpServers).length,
-        changes: {
-          added: changes.added.length,
-          removed: changes.removed.length,
-          modified: changes.modified.length,
-          unchanged: changes.unchanged.length
-        }
-      });
+      logger.debug(`Config loaded successfully from ${this.configPaths.join(", ")}`);
 
       // Include changes in return data
       return { config: newConfig, changes };
@@ -221,21 +247,8 @@ export class ConfigManager extends EventEmitter {
       if (error instanceof ConfigError) {
         throw error; // Re-throw our custom errors
       }
-      if (error.code === "ENOENT") {
-        throw new ConfigError("Config file not found", {
-          path: this.configPath,
-        });
-      }
-      if (error instanceof SyntaxError) {
-        throw new ConfigError("Invalid JSON in config file", {
-          path: this.configPath,
-          parseError: error.message,
-        });
-      }
       // Wrap any other errors
-      throw wrapError(error, "CONFIG_READ_ERROR", {
-        path: this.configPath,
-      });
+      throw wrapError(error, "CONFIG_READ_ERROR", {});
     }
   }
 
@@ -248,9 +261,14 @@ export class ConfigManager extends EventEmitter {
       return;
     }
 
+    if (!this.configPaths || this.configPaths.length === 0) {
+      logger.warn('No config paths to watch');
+      return;
+    }
+
     try {
-      // Initialize chokidar watcher with optimal settings
-      this.#watcher = chokidar.watch(this.configPath, {
+      // Initialize chokidar watcher to watch all config files
+      this.#watcher = chokidar.watch(this.configPaths, {
         // Wait for writes to fully complete before triggering
         awaitWriteFinish: {
           stabilityThreshold: 200, // Wait 200ms after last write
@@ -262,11 +280,9 @@ export class ConfigManager extends EventEmitter {
       });
 
       // Handle file changes
-      this.#watcher.on('change', async () => {
+      this.#watcher.on('change', async (changedPath) => {
         try {
-          logger.debug('Config file change detected', {
-            path: this.configPath
-          });
+          logger.debug(`Config file change detected at ${changedPath}`);
 
           // Load and parse updated config
           const { config, changes } = await this.loadConfig();
@@ -281,6 +297,7 @@ export class ConfigManager extends EventEmitter {
             // logger.debug('No significant config changes detected');
           } else {
             logger.info('Config changes processed', {
+              changedFile: changedPath,
               added: changes.added.length,
               removed: changes.removed.length,
               modified: changes.modified.length
@@ -308,12 +325,12 @@ export class ConfigManager extends EventEmitter {
         );
       });
 
-      logger.info(`Started watching config file with chokidar at ${this.configPath}`, {
-        path: this.configPath
+      logger.debug(`Started watching ${this.configPaths.join(", ")} files`, {
+        paths: this.configPaths
       });
     } catch (error) {
       throw new ConfigError('Failed to start config watcher', {
-        path: this.configPath,
+        paths: this.configPaths,
         error: error.message
       });
     }
@@ -326,9 +343,7 @@ export class ConfigManager extends EventEmitter {
     if (this.#watcher) {
       this.#watcher.close();
       this.#watcher = null;
-      logger.info(`Stopped watching config file at ${this.configPath}`, {
-        path: this.configPath
-      });
+      logger.info(`Stopped watching config file at ${this.configPaths.join(", ")}`);
     }
   }
   getConfig() {

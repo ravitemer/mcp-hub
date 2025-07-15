@@ -58,8 +58,8 @@ async function run() {
       },
       config: {
         alias: "c",
-        describe: "Path to config file",
-        type: "string",
+        describe: "Path to config file(s). Can be specified multiple times. Merged in order.",
+        type: "array",
         demandOption: true,
       },
       watch: {
@@ -80,7 +80,7 @@ async function run() {
         default: 0,
       },
     })
-    .example("mcp-hub --port 3000 --config ./mcp-servers.json")
+    .example("mcp-hub --port 3000 --config ./global.json --config ./project.json")
     .help("h")
     .alias("h", "help")
     .fail(handleParseError).argv;
@@ -88,7 +88,7 @@ async function run() {
   try {
     await startServer({
       port: argv.port,
-      config: argv.config,
+      config: argv.config, // This will now be an array of paths
       watch: argv.watch,
       autoShutdown: argv["auto-shutdown"],
       shutdownDelay: argv["shutdown-delay"],

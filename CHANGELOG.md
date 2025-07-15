@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [4.1.0] - 2025-07-15
+
+### Added
+
+- **Workspace Management**: Global workspace cache to track active hub instances across different working directories
+  - New `/api/workspaces` endpoint to list all active workspace instances
+  - Real-time workspace updates via new `workspaces_updated` SSE subscription event
+  - XDG-compliant workspace cache storage (`~/.local/state/mcp-hub/workspaces.json`)
+  - Automatic cleanup of stale workspace entries
+
+- **Multi-Configuration File Support**: Enhanced configuration system with intelligent merging
+  - CLI now accepts multiple `--config` arguments: `--config global.json --config project.json`
+  - Later configuration files override earlier ones with smart merging rules
+  - Missing configuration files are gracefully skipped
+  - Enhanced file watching for all specified configuration files
+
+- **Global Environment Variable Injection**: `MCP_HUB_ENV` environment variable support
+  - Parse JSON string from `MCP_HUB_ENV` and inject key-value pairs into all MCP server environments
+  - Useful for passing shared secrets, tokens, or configuration to all servers
+  - Server-specific `env` fields always override global values
+
+### Enhanced
+
+- **Health Endpoint**: Now includes comprehensive workspace information showing current workspace and all active instances
+- **Configuration Management**: Enhanced ConfigManager with robust array-based config path handling
+- **File Watching**: Improved configuration file monitoring across multiple files with better change detection
+- **Error Handling**: Enhanced error handling and logging throughout the workspace management system
+- Updated all dependencies to latest versions for improved security and performance
+
 ## [4.0.0] - 2025-07-09
 
 ### Breaking Changes

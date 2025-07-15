@@ -656,6 +656,7 @@ export class MCPConnection extends EventEmitter {
       lastStarted: this.lastStarted,
       authorizationUrl: this.authorizationUrl,
       serverInfo: this.serverInfo, // Include server's reported name/version
+      config_source: this.config.config_source, // Include which config file this server came from
     };
   }
 

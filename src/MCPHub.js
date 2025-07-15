@@ -16,7 +16,7 @@ export class MCPHub extends EventEmitter {
     this.port = port;
     this.hubServerUrl = `http://localhost:${port}`;
     this.configManager = new ConfigManager(configPathOrObject);
-    this.shouldWatchConfig = watch && typeof configPathOrObject === "string";
+    this.shouldWatchConfig = watch && (typeof configPathOrObject === "string" || Array.isArray(configPathOrObject));
     this.marketplace = marketplace;
   }
   async initialize(isRestarting) {
@@ -207,6 +207,7 @@ export class MCPHub extends EventEmitter {
         ...removePromises,
         ...modifiedPromises,
       ])
+      this.emit("importantConfigChangeHandled", changes);
     } catch (error) {
       logger.error(
         error.code || "CONFIG_UPDATE_ERROR",
@@ -217,7 +218,6 @@ export class MCPHub extends EventEmitter {
         },
         false
       )
-    } finally {
       this.emit("importantConfigChangeHandled", changes);
     }
   }

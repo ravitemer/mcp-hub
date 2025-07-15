@@ -105,6 +105,12 @@ The Hub automatically:
   - Proper cleanup of server connections
   - Error recovery and reconnection
 
+- **Workspace Management**:
+  - Track active MCP Hub instances across different working directories
+  - Global workspace cache in XDG-compliant state directory
+  - Real-time workspace updates via SSE events
+  - API endpoints to list and monitor active workspaces
+
 ### Components
 
 #### Hub Server
@@ -137,13 +143,16 @@ Start the hub server:
 
 ```bash
 mcp-hub --port 3000 --config path/to/config.json
+
+# Or with multiple config files (merged in order)
+mcp-hub --port 3000 --config ~/.config/mcphub/global.json --config ./.mcphub/project.json
 ```
 
 ### CLI Options
 ```bash
 Options:
   --port            Port to run the server on (required)
-  --config          Path to config file (required)
+  --config          Path to config file(s). Can be specified multiple times. Merged in order. (required)
   --watch           Watch config file for changes, only updates affected servers (default: false)
   --auto-shutdown   Whether to automatically shutdown when no clients are connected (default: false)
   --shutdown-delay  Delay in milliseconds before shutting down when auto-shutdown is enabled (default: 0)
@@ -152,7 +161,27 @@ Options:
 
 ## Configuration
 
-MCP Hub uses a JSON configuration file to define managed servers with **universal `${}` placeholder syntax** for environment variables and command execution.
+MCP Hub uses JSON configuration files to define managed servers with **universal `${}` placeholder syntax** for environment variables and command execution.
+
+### Multiple Configuration Files
+
+MCP Hub supports loading multiple configuration files that are merged in order. This enables flexible configuration management:
+
+- **Global Configuration**: System-wide settings (e.g., `~/.config/mcphub/global.json`)
+- **Project Configuration**: Project-specific settings (e.g., `./.mcphub/project.json`)
+- **Environment Configuration**: Environment-specific overrides
+
+When multiple config files are specified, they are merged with later files overriding earlier ones:
+
+```bash
+# Global config is loaded first, then project config overrides
+mcp-hub --port 3000 --config ~/.config/mcphub/global.json --config ./.mcphub/project.json
+```
+
+**Merge Behavior:**
+- `mcpServers` sections are merged (server definitions from later files override earlier ones)
+- Other top-level properties are completely replaced by later files
+- Missing config files are silently skipped
 
 ### Universal Placeholder Syntax
 
@@ -353,6 +382,16 @@ Response:
         "lastEventAt": "2024-02-20T05:55:00.000Z"
       }
     ]
+  },
+  "workspace": {
+    "current": "/path/to/current/project",
+    "allActive": {
+      "/path/to/project-a": {
+        "pid": 12345,
+        "port": 40123,
+        "startTime": "2025-01-01T12:00:00.000Z"
+      }
+    }
   }
 }
 ```
@@ -474,6 +513,34 @@ Response:
     "name": "example-server",
     "status": "disconnected",
     "uptime": 0
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
+### Workspace Management
+
+#### List Active Workspaces
+
+```bash
+GET /api/workspaces
+```
+
+Response:
+
+```json
+{
+  "workspaces": {
+    "/path/to/project-a": {
+      "pid": 12345,
+      "port": 40123,
+      "startTime": "2025-01-01T12:00:00.000Z"
+    },
+    "/path/to/project-b": {
+      "pid": 54321,
+      "port": 40567,
+      "startTime": "2025-01-01T12:05:00.000Z"
+    }
   },
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
@@ -766,6 +833,22 @@ MCP Hub emits several types of events:
   "timestamp": "2024-02-20T05:55:00.000Z"
 }
 ```
+
+7. **workspaces_updated** - Active workspaces changed
+```json
+{
+  "type": "workspaces_updated",
+  "workspaces": {
+    "/path/to/project-a": {
+      "pid": 12345,
+      "port": 40123,
+      "startTime": "2025-01-01T12:00:00.000Z"
+    }
+  },
+  "timestamp": "2024-02-20T05:55:00.000Z"
+}
+```
+
 ### Connection Management
 
 - Each SSE connection is assigned a unique ID
@@ -779,6 +862,15 @@ MCP Hub uses structured JSON logging for all events. Logs are written to both co
 
 - **XDG compliant**: `$XDG_STATE_HOME/mcp-hub/logs/mcp-hub.log` (typically `~/.local/state/mcp-hub/logs/mcp-hub.log`)
 - **Legacy fallback**: `~/.mcp-hub/logs/mcp-hub.log` (for backward compatibility)
+
+## Workspace Cache
+
+MCP Hub maintains a global workspace cache to track active instances across different working directories:
+
+- **Cache Location**: `$XDG_STATE_HOME/mcp-hub/workspaces.json` (typically `~/.local/state/mcp-hub/workspaces.json`)
+- **Purpose**: Prevents port conflicts and enables workspace discovery
+- **Content**: Maps workspace paths to their corresponding hub process information (PID, port, start time)
+- **Cleanup**: Automatically removes stale entries when processes are no longer running
 
 ```json
 {

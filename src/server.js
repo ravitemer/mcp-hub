@@ -15,6 +15,7 @@ import {
 } from "./utils/errors.js";
 import { getMarketplace } from "./marketplace.js";
 import { MCPServerEndpoint } from "./mcp/server.js";
+import { WorkspaceCacheManager } from "./utils/workspace-cache.js";
 
 const SERVER_ID = "mcp-hub";
 
@@ -48,6 +49,7 @@ class ServiceManager {
     this.mcpHub = null;
     this.server = null;
     this.sseManager = new SSEManager(options);
+    this.workspaceCache = new WorkspaceCacheManager();
     this.state = 'starting';
     // Connect logger to SSE manager
     logger.setSseManager(this.sseManager);
@@ -93,7 +95,18 @@ class ServiceManager {
   }
 
   async initializeMCPHub() {
-    // Initialize marketplace first
+    // Initialize workspace cache first
+    logger.info("Initializing workspace cache");
+    await this.workspaceCache.initialize();
+    await this.workspaceCache.register(this.port);
+    await this.workspaceCache.startWatching();
+
+    // Setup workspace cache event handlers
+    this.workspaceCache.on('workspacesUpdated', (workspaces) => {
+      this.broadcastSubscriptionEvent(SubscriptionTypes.WORKSPACES_UPDATED, { workspaces });
+    });
+
+    // Initialize marketplace second
     logger.info("Initializing marketplace catalog");
     marketplace = getMarketplace();
     await marketplace.initialize();
@@ -287,7 +300,17 @@ class ServiceManager {
       }
     }
 
-    await Promise.allSettled([this.stopMCPHub(), this.sseManager.shutdown(), this.stopServer()]);
+    //INFO:Sometimes this might take some time, keeping the process alive, this might cause issue when restarting 
+    //INFO: MUST catch the error here to avoid unhandled rejection, which will again call shutdown() leading to infinite loop
+    this.stopServer().catch((error) => {
+      // Mostly happens when the server is already stopped (race condition)
+      logger.debug(`Error stopping HTTP server: ${error.message}`);
+    })
+    await Promise.allSettled([
+      this.stopMCPHub(),
+      this.sseManager.shutdown(),
+      this.workspaceCache.shutdown()
+    ]);
     this.setState(HubState.STOPPED)
   }
 }
@@ -301,7 +324,7 @@ registerRoute("GET", "/events", "Subscribe to server events", (req, res) => {
     // Add client connection
     const connection = serviceManager.sseManager.addConnection(req, res);
     // Send initial state
-    serviceManager.broadcastHubState();
+    connection.send(EventTypes.HUB_STATE, serviceManager.getState());
   } catch (error) {
     logger.error('SSE_SETUP_ERROR', 'Failed to setup SSE connection', {
       error: error.message,
@@ -399,6 +422,26 @@ registerRoute(
   }
 );
 
+// Register workspaces endpoint
+registerRoute(
+  "GET",
+  "/workspaces",
+  "Get all active workspaces",
+  async (req, res) => {
+    try {
+      const workspaces = await serviceManager.workspaceCache.getActiveWorkspaces();
+      res.json({
+        workspaces,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw wrapError(error, "WORKSPACE_ERROR", {
+        operation: "list_workspaces",
+      });
+    }
+  }
+);
+
 // Register server start endpoint
 registerRoute(
   "POST",
@@ -462,7 +505,7 @@ registerRoute(
 );
 
 // Register health check endpoint
-registerRoute("GET", "/health", "Check server health", (req, res) => {
+registerRoute("GET", "/health", "Check server health", async (req, res) => {
   const healthData = {
     status: "ok",
     state: serviceManager?.state || HubState.STARTING,
@@ -476,6 +519,18 @@ registerRoute("GET", "/health", "Check server health", (req, res) => {
   // Add MCP endpoint stats if available
   if (mcpServerEndpoint) {
     healthData.mcpEndpoint = mcpServerEndpoint.getStats();
+  }
+
+  // Add workspace information if available
+  if (serviceManager?.workspaceCache) {
+    try {
+      healthData.workspace = {
+        current: serviceManager.workspaceCache.getWorkspaceKey(),
+        allActive: await serviceManager.workspaceCache.getActiveWorkspaces()
+      };
+    } catch (error) {
+      logger.debug(`Failed to get workspace info for health check: ${error.message}`);
+    }
   }
 
   res.json(healthData);
