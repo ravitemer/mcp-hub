@@ -20,10 +20,10 @@ export class WorkspaceCacheManager extends EventEmitter {
   }
 
   /**
-   * Get the current workspace key (directory path from process.cwd())
+   * Get the current workspace key (port as string)
    */
   getWorkspaceKey() {
-    return process.cwd();
+    return this.port ? this.port.toString() : null;
   }
 
   /**
@@ -55,11 +55,19 @@ export class WorkspaceCacheManager extends EventEmitter {
    * Register this hub instance in the workspace cache
    */
   async register(port, configFiles = []) {
+    // Update our port reference
+    this.port = port;
     const workspaceKey = this.getWorkspaceKey();
+
+    if (!workspaceKey) {
+      throw new Error('Cannot register workspace: no port specified');
+    }
+
     const entry = {
-      pid: process.pid,
-      port: port,
+      cwd: process.cwd(),
       config_files: configFiles,
+      pid: process.pid,
+      port: this.port,
       startTime: new Date().toISOString()
     };
 
@@ -70,14 +78,15 @@ export class WorkspaceCacheManager extends EventEmitter {
         await this._writeCache(cache);
       });
 
-      logger.info(`Registered workspace '${workspaceKey}' in cache`, {
-        workspaceKey,
+      logger.info(`Registered workspace on port ${port}`, {
+        port,
+        cwd: entry.cwd,
         pid: entry.pid,
-        port: entry.port
+        config_files: configFiles.length
       });
     } catch (error) {
       logger.error('WORKSPACE_CACHE_REGISTER_ERROR', `Failed to register workspace: ${error.message}`, {
-        workspaceKey,
+        port,
         error: error.message
       }, false);
       throw error;
@@ -90,27 +99,27 @@ export class WorkspaceCacheManager extends EventEmitter {
   async deregister() {
     const workspaceKey = this.getWorkspaceKey();
 
+    if (!workspaceKey) {
+      logger.debug('No workspace key available for deregistration');
+      return;
+    }
+
     try {
       await this._withLock(async () => {
         const cache = await this._readCache();
         if (cache[workspaceKey]) {
-          const port = cache[workspaceKey].port;
-          //INFO: Only delete the entry if the port matches the current instance
-          //Sometimes another mcp-hub might be started from the same directory with different port, in which case we should not delete the entry
-          if (this.port && this.port === port) {
-            delete cache[workspaceKey];
-            await this._writeCache(cache);
-          }
-
+          delete cache[workspaceKey];
+          await this._writeCache(cache);
         }
       });
 
-      logger.info(`Deregistered workspace '${workspaceKey}' from cache`, {
-        workspaceKey
+      logger.info(`Deregistered workspace on port ${this.port}`, {
+        port: this.port,
+        cwd: process.cwd()
       });
     } catch (error) {
       logger.error('WORKSPACE_CACHE_DEREGISTER_ERROR', `Failed to deregister workspace: ${error.message}`, {
-        workspaceKey,
+        port: this.port,
         error: error.message
       }, false);
       // Don't throw on deregister errors to avoid blocking shutdown
