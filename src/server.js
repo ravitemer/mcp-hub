@@ -49,7 +49,7 @@ class ServiceManager {
     this.mcpHub = null;
     this.server = null;
     this.sseManager = new SSEManager(options);
-    this.workspaceCache = new WorkspaceCacheManager();
+    this.workspaceCache = new WorkspaceCacheManager(options);
     this.state = 'starting';
     // Connect logger to SSE manager
     logger.setSseManager(this.sseManager);
@@ -98,7 +98,7 @@ class ServiceManager {
     // Initialize workspace cache first
     logger.info("Initializing workspace cache");
     await this.workspaceCache.initialize();
-    await this.workspaceCache.register(this.port);
+    await this.workspaceCache.register(this.port, this.config);
     await this.workspaceCache.startWatching();
 
     // Setup workspace cache event handlers
@@ -524,7 +524,7 @@ registerRoute("GET", "/health", "Check server health", async (req, res) => {
   // Add workspace information if available
   if (serviceManager?.workspaceCache) {
     try {
-      healthData.workspace = {
+      healthData.workspaces = {
         current: serviceManager.workspaceCache.getWorkspaceKey(),
         allActive: await serviceManager.workspaceCache.getActiveWorkspaces()
       };

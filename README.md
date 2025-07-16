@@ -383,7 +383,7 @@ Response:
       }
     ]
   },
-  "workspace": {
+  "workspaces": {
     "current": "/path/to/current/project",
     "allActive": {
       "/path/to/project-a": {

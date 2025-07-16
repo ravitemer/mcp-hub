@@ -10,12 +10,13 @@ import { EventEmitter } from 'events';
  * across all workspaces on the system.
  */
 export class WorkspaceCacheManager extends EventEmitter {
-  constructor() {
+  constructor(options = {}) {
     super();
     this.cacheFilePath = path.join(getXDGDirectory('state'), 'workspaces.json');
     this.lockFilePath = this.cacheFilePath + '.lock';
     this.watcher = null;
     this.isWatching = false;
+    this.port = options.port || null;
   }
 
   /**
@@ -53,11 +54,12 @@ export class WorkspaceCacheManager extends EventEmitter {
   /**
    * Register this hub instance in the workspace cache
    */
-  async register(port) {
+  async register(port, configFiles = []) {
     const workspaceKey = this.getWorkspaceKey();
     const entry = {
       pid: process.pid,
       port: port,
+      config_files: configFiles,
       startTime: new Date().toISOString()
     };
 
@@ -92,8 +94,14 @@ export class WorkspaceCacheManager extends EventEmitter {
       await this._withLock(async () => {
         const cache = await this._readCache();
         if (cache[workspaceKey]) {
-          delete cache[workspaceKey];
-          await this._writeCache(cache);
+          const port = cache[workspaceKey].port;
+          //INFO: Only delete the entry if the port matches the current instance
+          //Sometimes another mcp-hub might be started from the same directory with different port, in which case we should not delete the entry
+          if (this.port && this.port === port) {
+            delete cache[workspaceKey];
+            await this._writeCache(cache);
+          }
+
         }
       });
 
