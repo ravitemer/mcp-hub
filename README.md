@@ -1140,3 +1140,85 @@ The registry is updated regularly with new servers and improvements to existing 
 ## Acknowledgements
 
 - [ravitemer/mcp-registry](https://github.com/ravitemer/mcp-registry) - For providing the MCP server marketplace endpoints that power MCP Hub's marketplace integration
+
+## Running with Docker
+
+You can run MCP Hub in a containerized environment using Docker. This is the recommended way to deploy in production or for isolated local development.
+
+### Build the Docker image
+
+```bash
+docker build -t mcp-hub .
+```
+
+### Run the container
+
+Mount your configuration file and expose the desired port:
+
+```bash
+docker run -it --rm \
+  -v /absolute/path/to/mcp-servers.json:/config/mcp-servers.json \
+  -p 37373:37373 \
+  mcp-hub
+```
+
+- By default, the container expects the config at `/config/mcp-servers.json` and listens on port 37373.
+- You can override the port or config path using CLI arguments:
+
+```bash
+docker run -it --rm \
+  -v /absolute/path/to/mcp-servers.json:/config/mcp-servers.json \
+  -p 3000:3000 \
+  mcp-hub --port 3000 --config /config/mcp-servers.json
+```
+
+### Run as a daemon (background service)
+
+To run the container in the background as a daemon:
+
+```bash
+docker run -d \
+  -v /absolute/path/to/mcp-servers.json:/config/mcp-servers.json \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 37373:37373 \
+  --name mcp-hub \
+  mcp-hub
+```
+
+**Daemon management commands:**
+```bash
+# Check logs
+docker logs mcp-hub
+
+# Stop the daemon
+docker stop mcp-hub
+
+# Remove the container
+docker rm mcp-hub
+
+# Restart the daemon
+docker restart mcp-hub
+```
+
+### Passing Environment Variables
+
+You can pass environment variables (including `MCP_HUB_ENV`) using `-e`:
+
+```bash
+docker run -it --rm \
+  -v /absolute/path/to/mcp-servers.json:/config/mcp-servers.json \
+  -e MCP_HUB_ENV='{"MY_TOKEN":"abc"}' \
+  -p 37373:37373 \
+  mcp-hub
+```
+
+### Best Practices for Docker Deployments
+
+- Use a dedicated config file and mount it as a volume.
+- Use environment variables for secrets and shared config (`MCP_HUB_ENV`).
+- Run as a non-root user (the image does this by default).
+- Expose only the necessary port.
+- Use `--rm` for ephemeral containers, or manage with Docker Compose/Kubernetes for persistent deployments.
+- For production, use a read-only config volume and restrict permissions as needed.
+
+---
