@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [4.1.1] - 2025-07-17
+
+### Added
+
+- **Real-time Workspace Lifecycle Tracking**: Enhanced workspace cache with detailed hub state management
+  - Workspace states: `active` (hub running with connections) and `shutting_down` (no connections, shutdown timer active)
+  - Real-time connection count tracking for all active hubs
+  - Shutdown timer information including start time and delay duration
+  - Automatic state transitions when connections are added/removed
+  - Live updates via SSE events enable immediate UI feedback on workspace changes
+
+### Enhanced
+
+- **Workspace Cache**: Extended workspace entries with lifecycle metadata
+  - Added `state`, `activeConnections`, `shutdownStartedAt`, and `shutdownDelay` fields
+  - Improved cache update methods for atomic state management
+  - Better integration between SSEManager and WorkspaceCacheManager
+
+- **SSE System**: Enhanced real-time communication
+  - SSEManager now updates workspace cache on connection changes
+  - Automatic workspace state updates when shutdown timers start/cancel
+  - Async connection handling for better cache integration
+
 ## [4.1.0] - 2025-07-15
 
 ### Added
