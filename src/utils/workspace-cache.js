@@ -68,7 +68,11 @@ export class WorkspaceCacheManager extends EventEmitter {
       config_files: configFiles,
       pid: process.pid,
       port: this.port,
-      startTime: new Date().toISOString()
+      startTime: new Date().toISOString(),
+      state: 'active',
+      activeConnections: 0,
+      shutdownStartedAt: null,
+      shutdownDelay: null
     };
 
     try {
@@ -237,6 +241,76 @@ export class WorkspaceCacheManager extends EventEmitter {
         error: error.message
       }, false);
     }
+  }
+
+  /**
+   * Update workspace state in the cache
+   */
+  async updateWorkspaceState(port, updates) {
+    const workspaceKey = port.toString();
+
+    try {
+      await this._withLock(async () => {
+        const cache = await this._readCache();
+        if (cache[workspaceKey]) {
+          // Merge updates with existing entry
+          cache[workspaceKey] = { ...cache[workspaceKey], ...updates };
+          await this._writeCache(cache);
+
+          logger.debug(`Updated workspace state for port ${port}`, {
+            port,
+            updates
+          });
+        }
+      });
+    } catch (error) {
+      logger.error('WORKSPACE_CACHE_UPDATE_ERROR', `Failed to update workspace state: ${error.message}`, {
+        port,
+        updates,
+        error: error.message
+      }, false);
+    }
+  }
+
+  /**
+   * Mark workspace as shutting down
+   */
+  async setShutdownTimer(port, shutdownDelay) {
+    await this.updateWorkspaceState(port, {
+      state: 'shutting_down',
+      shutdownStartedAt: new Date().toISOString(),
+      shutdownDelay: shutdownDelay,
+      activeConnections: 0
+    });
+
+    logger.info(`Workspace on port ${port} entering shutdown state`, {
+      port,
+      shutdownDelay
+    });
+  }
+
+  /**
+   * Cancel shutdown timer and return to active state
+   */
+  async cancelShutdownTimer(port) {
+    await this.updateWorkspaceState(port, {
+      state: 'active',
+      shutdownStartedAt: null,
+      shutdownDelay: null
+    });
+
+    logger.info(`Workspace on port ${port} shutdown cancelled, returning to active`, {
+      port
+    });
+  }
+
+  /**
+   * Update active connections count
+   */
+  async updateActiveConnections(port, connectionCount) {
+    await this.updateWorkspaceState(port, {
+      activeConnections: connectionCount
+    });
   }
 
   /**

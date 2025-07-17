@@ -64,6 +64,8 @@ export class SSEManager extends EventEmitter {
     this.shutdownDelay = options.shutdownDelay || 0;
     this.shutdownTimer = null;
     this.heartbeatTimer = null;
+    this.workspaceCache = options.workspaceCache || null;
+    this.port = options.port || null;
 
     this.setupHeartbeat();
     this.setupAutoShutdown();
@@ -77,11 +79,22 @@ export class SSEManager extends EventEmitter {
     if (!this.autoShutdown) return;
 
     logger.debug("Setting up auto shutting down")
-    this.on('connectionClosed', () => {
+    this.on('connectionClosed', async () => {
+      // Update workspace cache with current connection count
+      if (this.workspaceCache && this.port) {
+        await this.workspaceCache.updateActiveConnections(this.port, this.connections.size);
+      }
+
       if (this.connections.size === 0) {
         if (this.shutdownTimer) {
           clearTimeout(this.shutdownTimer);
         }
+
+        // Mark workspace as shutting down in cache
+        if (this.workspaceCache && this.port) {
+          await this.workspaceCache.setShutdownTimer(this.port, this.shutdownDelay);
+        }
+
         logger.debug(`Starting timer for auto shutdown (${this.shutdownDelay}ms)`);
         this.shutdownTimer = setTimeout(() => {
           logger.info('No active SSE connections, initiating shutdown', {
@@ -115,7 +128,7 @@ export class SSEManager extends EventEmitter {
    * @param {Response} res Express response object
    * @returns {Object} Connection object
    */
-  addConnection(req, res) {
+  async addConnection(req, res) {
     const id = uuidv4();
 
     const connection = {
@@ -176,9 +189,19 @@ export class SSEManager extends EventEmitter {
     if (this.shutdownTimer) {
       clearTimeout(this.shutdownTimer);
       this.shutdownTimer = null;
+
+      // Cancel shutdown in workspace cache
+      if (this.workspaceCache && this.port) {
+        await this.workspaceCache.cancelShutdownTimer(this.port);
+      }
     }
 
     this.connections.set(id, connection);
+
+    // Update workspace cache with new connection count
+    if (this.workspaceCache && this.port) {
+      await this.workspaceCache.updateActiveConnections(this.port, this.connections.size);
+    }
 
     logger.debug('SSE client connected', {
       clientId: id,
