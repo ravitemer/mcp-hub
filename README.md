@@ -1172,6 +1172,22 @@ docker run -it --rm \
   mcp-hub --port 3000 --config /config/mcp-servers.json
 ```
 
+#### Using Multiple Config Files
+
+You can specify multiple configuration files by passing multiple `--config` flags. The container will forward all arguments to the app:
+
+```bash
+docker run -it --rm \
+  -v /absolute/path/to/global.json:/config/global.json \
+  -v /absolute/path/to/project.json:/config/project.json \
+  -p 37373:37373 \
+  mcp-hub --port 37373 \
+    --config /config/global.json \
+    --config /config/project.json
+```
+
+You can pass any number of `--config` flags, and they will be merged in the order provided (later files override earlier ones). This works for both foreground and daemonized containers.
+
 ### Run as a daemon (background service)
 
 To run the container in the background as a daemon:

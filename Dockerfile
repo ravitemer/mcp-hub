@@ -19,4 +19,6 @@ RUN npm ci --omit=dev
 RUN apk add --no-cache docker-cli
 
 EXPOSE 37373
-CMD ["node", "dist/cli.js", "--port", "37373", "--config", "/config/mcp-servers.json"] 
+
+ENTRYPOINT ["node", "dist/cli.js"]
+CMD ["--port", "37373", "--config", "/config/mcp-servers.json"] 
