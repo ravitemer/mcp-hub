@@ -346,6 +346,7 @@ export class ConfigManager extends EventEmitter {
             });
           }
         } catch (error) {
+          this.emit('configChanged', {});
           logger.error(
             'CONFIG_RELOAD_ERROR',
             `Error reloading config after change: ${error.message}`,

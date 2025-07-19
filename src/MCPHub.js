@@ -165,8 +165,12 @@ export class MCPHub extends EventEmitter {
 
   async handleConfigUpdated(newConfig, changes) {
     try {
-      const isSignificant = changes.added.length > 0 || changes.removed.length > 0 || changes.modified.length > 0;
+      const isSignificant = !!changes ? (changes.added?.length > 0 || changes.removed?.length > 0 || changes.modified?.length > 0) : false
       this.emit("configChangeDetected", { newConfig, isSignificant })
+      //Even when some error occured on reloading, send the event to clients
+      if (!newConfig || !changes) {
+        return
+      }
       if (!isSignificant) {
         logger.debug("No significant config changes detected")
         return;
