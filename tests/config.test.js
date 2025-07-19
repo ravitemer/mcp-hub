@@ -55,11 +55,50 @@ describe("ConfigManager", () => {
 
     it("should initialize with config path", () => {
       configManager = new ConfigManager("/path/to/config.json");
-      expect(configManager.configPath).toBe("/path/to/config.json");
+      expect(configManager.configPaths).toEqual(["/path/to/config.json"]);
     });
   });
 
   describe("loadConfig", () => {
+    it("should load and validate VS Code format config", async () => {
+      const vsCodeConfig = {
+        servers: {
+          github: {
+            url: "https://api.githubcopilot.com/mcp/"
+          },
+          perplexity: {
+            command: "npx",
+            args: ["-y", "server-perplexity-ask"],
+            env: {
+              PERPLEXITY_API_KEY: "test-key"
+            }
+          }
+        }
+      };
+      vi.spyOn(fs, "readFile").mockResolvedValue(JSON.stringify(vsCodeConfig));
+
+      configManager = new ConfigManager("/path/to/config.json");
+      const result = await configManager.loadConfig();
+
+      expect(result.config.mcpServers).toEqual({
+        github: {
+          url: "https://api.githubcopilot.com/mcp/",
+          type: "sse",
+          config_source: "/path/to/config.json"
+        },
+        perplexity: {
+          command: "npx",
+          args: ["-y", "server-perplexity-ask"],
+          env: {
+            PERPLEXITY_API_KEY: "test-key"
+          },
+          type: "stdio",
+          config_source: "/path/to/config.json"
+        }
+      });
+      expect(fs.readFile).toHaveBeenCalledWith("/path/to/config.json", "utf-8");
+    });
+
     it("should load and validate config from file", async () => {
       vi.spyOn(fs, "readFile").mockResolvedValue(JSON.stringify(validConfig));
 
@@ -71,7 +110,8 @@ describe("ConfigManager", () => {
         mcpServers: {
           test: {
             ...validConfig.mcpServers.test,
-            type: "stdio"
+            type: "stdio",
+            config_source: "/path/to/config.json"
           }
         }
       });
@@ -81,7 +121,7 @@ describe("ConfigManager", () => {
     it("should throw error if no config path specified", async () => {
       configManager = new ConfigManager();
       await expect(configManager.loadConfig()).rejects.toThrow(
-        "No config path specified"
+        "No config paths specified"
       );
     });
 
@@ -92,7 +132,7 @@ describe("ConfigManager", () => {
 
       configManager = new ConfigManager("/path/to/config.json");
       await expect(configManager.loadConfig()).rejects.toThrow(
-        "Missing or invalid mcpServers configuration"
+        "Failed to load config from /path/to/config.json: Invalid config format in /path/to/config.json: 'mcpServers' must be an object"
       );
     });
 
@@ -298,7 +338,7 @@ describe("ConfigManager", () => {
       configManager.watchConfig();
 
       expect(chokidar.watch).toHaveBeenCalledWith(
-        "/path/to/config.json",
+        ["/path/to/config.json"],
         expect.objectContaining({
           awaitWriteFinish: expect.any(Object),
           persistent: true,
@@ -335,13 +375,14 @@ describe("ConfigManager", () => {
       configManager = new ConfigManager("/path/to/config.json");
       await configManager.updateConfig("/path/to/new-config.json");
 
-      expect(configManager.configPath).toBe("/path/to/new-config.json");
+      expect(configManager.configPaths).toEqual(["/path/to/new-config.json"]);
       expect(configManager.getConfig()).toEqual({
         ...validConfig,
         mcpServers: {
           test: {
             ...validConfig.mcpServers.test,
-            type: "stdio"
+            type: "stdio",
+            config_source: "/path/to/new-config.json"
           }
         }
       });

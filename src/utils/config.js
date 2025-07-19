@@ -11,6 +11,35 @@ export class ConfigManager extends EventEmitter {
   #previousConfig = null;
   #watcher = null;
 
+  /**
+   * Detect if config uses VS Code format (has "servers" key)
+   * @param {Object} config - Raw config object
+   * @returns {boolean} True if VS Code format detected
+   */
+  #isVSCodeFormat(config) {
+    return config.servers && typeof config.servers === 'object' &&
+      (!config.mcpServers || Object.keys(config.mcpServers).length === 0);
+  }
+
+  /**
+   * Convert VS Code servers format to mcpServers format
+   * @param {Object} config - Raw config object  
+   * @returns {Object} Config with servers converted to mcpServers
+   */
+  #normalizeServersKey(config) {
+    if (!config.servers) return config;
+
+    const normalized = { ...config };
+
+    // Convert servers to mcpServers (prefer servers if both exist)
+    normalized.mcpServers = config.servers;
+
+    // Keep servers key for potential round-trip editing
+    // delete normalized.servers;
+
+    return normalized;
+  }
+
   constructor(configPathOrObject) {
     super();
     this.configPaths = null;
@@ -114,18 +143,31 @@ export class ConfigManager extends EventEmitter {
       for (const configPath of this.configPaths) {
         try {
           const content = await fs.readFile(configPath, "utf-8");
-          const config = JSON.parse(content);
+          const rawConfig = JSON.parse(content);
 
-          // Merge the config - mcpServers from later files override earlier ones
-          if (config.mcpServers && typeof config.mcpServers === "object") {
-            // Add config_source to each server config before merging
-            Object.entries(config.mcpServers).forEach(([serverName, serverConfig]) => {
-              mergedConfig.mcpServers[serverName] = {
-                ...serverConfig,
-                config_source: configPath // Track which file this server came from
-              };
+          // Log format for debugging
+          if (this.#isVSCodeFormat(rawConfig)) {
+            logger.debug(`VS Code format detected in ${configPath}, converted 'servers' to 'mcpServers'`);
+          }
+
+          // Convert VS Code format if needed
+          const config = this.#normalizeServersKey(rawConfig);
+
+          if (typeof config.mcpServers !== "object") {
+            throw new ConfigError(`Invalid config format in ${configPath}: 'mcpServers' must be an object`, {
+              configPath,
+              rawConfig
             });
           }
+
+
+          // Add config_source to each server config before merging
+          Object.entries(config.mcpServers).forEach(([serverName, serverConfig]) => {
+            mergedConfig.mcpServers[serverName] = {
+              ...serverConfig,
+              config_source: configPath // Track which file this server came from
+            };
+          });
 
           // For other top-level properties, later config files override earlier ones
           Object.keys(config).forEach(key => {
