@@ -663,5 +663,289 @@ describe("EnvResolver", () => {
         });
       });
     });
+
+    describe("VS Code Compatibility", () => {
+      beforeEach(() => {
+        // Clear any existing global env
+        delete process.env.MCP_HUB_ENV;
+      });
+
+      describe("Predefined Variables", () => {
+        it("should resolve VS Code predefined variables", async () => {
+          const config = {
+            url: "${workspaceFolder}/api",
+            command: "${userHome}/bin/server",
+            cwd: "${workspaceFolder}",
+            args: ["--config", "${workspaceFolder}/config.json"]
+          };
+
+          const result = await resolver.resolveConfig(config, ['url', 'command', 'cwd', 'args']);
+
+          const expectedCwd = process.cwd();
+          const expectedHome = require('os').homedir();
+
+          expect(result.url).toBe(`${expectedCwd}/api`);
+          expect(result.command).toBe(`${expectedHome}/bin/server`);
+          expect(result.cwd).toBe(expectedCwd);
+          expect(result.args).toEqual(["--config", `${expectedCwd}/config.json`]);
+        });
+
+        it("should support workspaceFolderBasename variable", async () => {
+          const config = {
+            env: {
+              PROJECT_NAME: "${workspaceFolderBasename}"
+            }
+          };
+
+          const result = await resolver.resolveConfig(config, ['env']);
+          const expectedBasename = require('path').basename(process.cwd());
+
+          expect(result.env.PROJECT_NAME).toBe(expectedBasename);
+        });
+
+        it("should support pathSeparator variable", async () => {
+          const config = {
+            env: {
+              PATH_SEP: "${pathSeparator}",
+              PATH_SEP_SHORT: "${/}"  // VS Code shorthand
+            }
+          };
+
+          const result = await resolver.resolveConfig(config, ['env']);
+          const expectedSep = require('path').sep;
+
+          expect(result.env.PATH_SEP).toBe(expectedSep);
+          expect(result.env.PATH_SEP_SHORT).toBe(expectedSep);
+        });
+
+        it("should have correct priority - predefined vars should not override process.env", async () => {
+          // Set a process.env variable that might conflict with predefined vars
+          process.env.workspaceFolder = '/custom/workspace';
+
+          const config = {
+            env: {
+              WORKSPACE: "${workspaceFolder}"
+            }
+          };
+
+          const result = await resolver.resolveConfig(config, ['env']);
+
+          // process.env should win over predefined vars
+          expect(result.env.WORKSPACE).toBe('/custom/workspace');
+
+          // Cleanup
+          delete process.env.workspaceFolder;
+        });
+      });
+
+      describe("VS Code env: syntax", () => {
+        it("should resolve ${env:VARIABLE} syntax", async () => {
+          process.env.VS_CODE_VAR = 'vscode_value';
+
+          const config = {
+            env: {
+              STANDARD: "${API_KEY}",        // Standard syntax
+              VS_CODE: "${env:VS_CODE_VAR}"  // VS Code syntax
+            },
+            headers: {
+              "Authorization": "Bearer ${env:API_KEY}"
+            }
+          };
+
+          const result = await resolver.resolveConfig(config, ['env', 'headers']);
+
+          expect(result.env.STANDARD).toBe('secret_key');
+          expect(result.env.VS_CODE).toBe('vscode_value');
+          expect(result.headers.Authorization).toBe('Bearer secret_key');
+
+          // Cleanup
+          delete process.env.VS_CODE_VAR;
+        });
+
+        it("should handle unresolved ${env:} variables in strict mode", async () => {
+          const config = {
+            env: {
+              MISSING: "${env:UNKNOWN_VAR}"
+            }
+          };
+
+          await expect(resolver.resolveConfig(config, ['env']))
+            .rejects.toThrow("Variable 'UNKNOWN_VAR' not found");
+        });
+
+        it("should handle unresolved ${env:} variables in non-strict mode", async () => {
+          const nonStrictResolver = new EnvResolver({ strict: false });
+
+          const config = {
+            env: {
+              MISSING: "${env:UNKNOWN_VAR}",
+              KNOWN: "${env:API_KEY}"
+            }
+          };
+
+          const result = await nonStrictResolver.resolveConfig(config, ['env']);
+
+          expect(result.env.MISSING).toBe('${env:UNKNOWN_VAR}');
+          expect(result.env.KNOWN).toBe('secret_key');
+        });
+      });
+
+      describe("VS Code input: variables via MCP_HUB_ENV", () => {
+        it("should resolve ${input:} variables from MCP_HUB_ENV", async () => {
+          process.env.MCP_HUB_ENV = JSON.stringify({
+            'input:api-key': 'secret-from-input',
+            'input:database-url': 'postgresql://localhost/test'
+          });
+
+          const config = {
+            env: {
+              API_KEY: "${input:api-key}",
+              DB_URL: "${input:database-url}"
+            },
+            headers: {
+              "Authorization": "Bearer ${input:api-key}"
+            }
+          };
+
+          const result = await resolver.resolveConfig(config, ['env', 'headers']);
+
+          expect(result.env.API_KEY).toBe('secret-from-input');
+          expect(result.env.DB_URL).toBe('postgresql://localhost/test');
+          expect(result.headers.Authorization).toBe('Bearer secret-from-input');
+        });
+
+        it("should handle missing ${input:} variables gracefully", async () => {
+          process.env.MCP_HUB_ENV = JSON.stringify({
+            'input:known-key': 'known-value'
+          });
+
+          const nonStrictResolver = new EnvResolver({ strict: false });
+
+          const config = {
+            env: {
+              KNOWN: "${input:known-key}",
+              MISSING: "${input:missing-key}"
+            }
+          };
+
+          const result = await nonStrictResolver.resolveConfig(config, ['env']);
+
+          expect(result.env.KNOWN).toBe('known-value');
+          expect(result.env.MISSING).toBe('${input:missing-key}'); // Kept as-is
+        });
+
+        it("should throw error for missing ${input:} variables in strict mode", async () => {
+          process.env.MCP_HUB_ENV = JSON.stringify({
+            'input:known-key': 'known-value'
+          });
+
+          const config = {
+            env: {
+              MISSING: "${input:missing-key}"
+            }
+          };
+
+          await expect(resolver.resolveConfig(config, ['env']))
+            .rejects.toThrow("Variable 'input:missing-key' not found");
+        });
+      });
+
+      describe("Complete VS Code scenario", () => {
+        it("should handle a complete VS Code-style configuration", async () => {
+          // Setup VS Code-style input variables in MCP_HUB_ENV
+          process.env.MCP_HUB_ENV = JSON.stringify({
+            'input:perplexity-key': 'pplx-secret-key',
+            'input:github-token': 'ghp_github_token'
+          });
+
+          // Setup some environment variables
+          process.env.NODE_ENV = 'production';
+
+          const config = {
+            env: {
+              // VS Code input variables
+              PERPLEXITY_API_KEY: "${input:perplexity-key}",
+              GITHUB_TOKEN: "${input:github-token}",
+
+              // VS Code env syntax
+              NODE_ENVIRONMENT: "${env:NODE_ENV}",
+
+              // VS Code predefined variables
+              WORKSPACE_PATH: "${workspaceFolder}",
+              USER_HOME: "${userHome}",
+
+              // Mixed syntax
+              CONFIG_PATH: "${workspaceFolder}/config/${env:NODE_ENV}.json"
+            },
+            args: [
+              "--workspace", "${workspaceFolder}",
+              "--token", "${input:perplexity-key}",
+              "--env", "${env:NODE_ENV}"
+            ],
+            headers: {
+              "Authorization": "Bearer ${input:github-token}",
+              "X-Workspace": "${workspaceFolderBasename}"
+            }
+          };
+
+          const result = await resolver.resolveConfig(config, ['env', 'args', 'headers']);
+
+          // Check input variables
+          expect(result.env.PERPLEXITY_API_KEY).toBe('pplx-secret-key');
+          expect(result.env.GITHUB_TOKEN).toBe('ghp_github_token');
+
+          // Check env: syntax
+          expect(result.env.NODE_ENVIRONMENT).toBe('production');
+
+          // Check predefined variables
+          expect(result.env.WORKSPACE_PATH).toBe(process.cwd());
+          expect(result.env.USER_HOME).toBe(require('os').homedir());
+
+          // Check mixed syntax
+          expect(result.env.CONFIG_PATH).toBe(`${process.cwd()}/config/production.json`);
+
+          // Check args resolution
+          expect(result.args).toEqual([
+            "--workspace", process.cwd(),
+            "--token", "pplx-secret-key",
+            "--env", "production"
+          ]);
+
+          // Check headers resolution
+          expect(result.headers.Authorization).toBe('Bearer ghp_github_token');
+          expect(result.headers['X-Workspace']).toBe(require('path').basename(process.cwd()));
+
+          // Cleanup
+          delete process.env.NODE_ENV;
+        });
+
+        it("should not pass predefined variables to server env", async () => {
+          process.env.MCP_HUB_ENV = JSON.stringify({
+            'GLOBAL_VAR': 'global_value'
+          });
+
+          const config = {
+            env: {
+              SERVER_VAR: "server_value",
+              WORKSPACE_REF: "${workspaceFolder}"
+            }
+          };
+
+          const result = await resolver.resolveConfig(config, ['env']);
+
+          // Server env should only contain global env + server env, not predefined vars
+          expect(result.env).toEqual({
+            GLOBAL_VAR: 'global_value',        // From MCP_HUB_ENV
+            SERVER_VAR: 'server_value',        // From server config
+            WORKSPACE_REF: process.cwd()       // Resolved predefined var
+          });
+
+          // Predefined variables themselves should NOT be in server env
+          expect(result.env.workspaceFolder).toBeUndefined();
+          expect(result.env.userHome).toBeUndefined();
+          expect(result.env.pathSeparator).toBeUndefined();
+        });
+      });
+    });
   });
 });

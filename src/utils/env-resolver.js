@@ -1,5 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import os from 'os';
+import path from 'path';
 import logger from './logger.js';
 
 const execPromise = promisify(exec);
@@ -41,6 +43,27 @@ export class EnvResolver {
   }
 
   /**
+   * Resolve VS Code predefined variables
+   * @param {Object} context - Current context (includes cwd, etc.)
+   * @returns {Object} - Predefined variables
+   */
+  _resolvePredefinedVars() {
+    const workspaceFolder = process.cwd();
+    const userHome = os.homedir();
+    const pathSeparator = path.sep;
+    const workspaceFolderBasename = path.basename(workspaceFolder);
+
+    return {
+      workspaceFolder,
+      userHome,
+      pathSeparator,
+      workspaceFolderBasename,
+      cwd: workspaceFolder,
+      '/': pathSeparator // VS Code shorthand
+    };
+  }
+
+  /**
    * Resolve all placeholders in a configuration object
    * @param {Object} config - Configuration object with fields to resolve
    * @param {Array} fieldsToResolve - Fields that should be resolved ['env', 'args', 'headers', 'url', 'command']
@@ -49,9 +72,10 @@ export class EnvResolver {
   async resolveConfig(config, fieldsToResolve = ['env', 'args', 'headers', 'url', 'command', 'cwd']) {
     const resolved = JSON.parse(JSON.stringify(config)); // Deep clone
 
-    // Build context with correct priority: process.env → globalEnv
+    // Build context with correct priority: predefinedVars → process.env → globalEnv
     const globalEnv = this._parseGlobalEnv();
-    let context = { ...process.env, ...globalEnv };
+    const predefinedVars = this._resolvePredefinedVars();
+    let context = { ...predefinedVars, ...process.env, ...globalEnv };
 
     // Resolve env field first if present (provides context for other fields)
     if (resolved.env && fieldsToResolve.includes('env')) {
@@ -186,11 +210,15 @@ export class EnvResolver {
           // Execute command directly with resolved content
           resolvedValue = await this._executeCommandContent(resolvedContent);
         } else {
-          // Environment variable lookup
-          resolvedValue = context[resolvedContent];
+          // Handle ${env:VARIABLE} syntax or regular variable lookup
+          const actualVar = resolvedContent.startsWith('env:')
+            ? resolvedContent.slice(4) // Remove "env:" prefix
+            : resolvedContent;
+
+          resolvedValue = context[actualVar];
           if (resolvedValue === undefined) {
             if (this.strict) {
-              throw new Error(`Variable '${resolvedContent}' not found`);
+              throw new Error(`Variable '${actualVar}' not found`);
             }
             logger.debug(`Unresolved placeholder: ${fullMatch}`);
             resolvedValue = fullMatch; // Keep original placeholder if not found and not in strict mode
