@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import chokidar from "chokidar";
 import { EventEmitter } from "events";
 import path from "path";
+import JSON5 from "json5";
 import logger from "./logger.js";
 import { ConfigError, wrapError } from "./errors.js";
 import deepEqual from "fast-deep-equal";
@@ -143,7 +144,7 @@ export class ConfigManager extends EventEmitter {
       for (const configPath of this.configPaths) {
         try {
           const content = await fs.readFile(configPath, "utf-8");
-          const rawConfig = JSON.parse(content);
+          const rawConfig = JSON5.parse(content);
 
           // Log format for debugging
           if (this.#isVSCodeFormat(rawConfig)) {
