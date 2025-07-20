@@ -45,6 +45,8 @@ This dual-interface approach means you can manage servers through the Hub's UI w
 | | Hot Reload | ✅ | Auto restart a MCP server on file changes with `dev` mode |
 | **Configuration** ||||
 | | `${}` Syntax | ✅ | Environment variables and command execution across all fields |
+| | VS Code Compatibility | ✅ | Support for `servers` key, `${env:}`, `${input:}`, predefined variables |
+| | JSON5 Support | ✅ | Comments and trailing commas in configuration files |
 
 ## Simplified Client Configuration
 
@@ -163,6 +165,73 @@ Options:
 
 MCP Hub uses JSON configuration files to define managed servers with **universal `${}` placeholder syntax** for environment variables and command execution.
 
+## VS Code Configuration Compatibility
+
+MCP Hub provides seamless compatibility with VS Code's `.vscode/mcp.json` configuration format, enabling you to use the same configuration files across both VS Code and MCP Hub.
+
+### Supported Features
+
+#### Server Configuration Keys
+Both `mcpServers` and `servers` keys are supported:
+
+```json
+{
+  "servers": {
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/"
+    },
+    "perplexity": {
+      "command": "npx", 
+      "args": ["-y", "server-perplexity-ask"],
+      "env": {
+        "API_KEY": "${env:PERPLEXITY_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+#### Variable Substitution
+MCP Hub supports VS Code-style variable substitution:
+
+- **Environment Variables**: `${env:VARIABLE_NAME}` or `${VARIABLE_NAME}`
+- **Workspace Variables**: `${workspaceFolder}`, `${userHome}`, `${pathSeparator}`
+- **Command Execution**: `${cmd: command args}`
+
+**Supported Predefined Variables:**
+- `${workspaceFolder}` - Directory where mcp-hub is running
+- `${userHome}` - User's home directory  
+- `${pathSeparator}` - OS path separator (/ or \)
+- `${workspaceFolderBasename}` - Just the folder name
+- `${cwd}` - Alias for workspaceFolder
+- `${/}` - VS Code shorthand for pathSeparator
+
+#### VS Code Input Variables
+For `${input:}` variables used in VS Code configs, use the `MCP_HUB_ENV` environment variable:
+
+```bash
+# Set input variables globally
+export MCP_HUB_ENV='{"input:api-key":"your-secret-key","input:database-url":"postgresql://..."}'
+
+# Then use in config
+{
+  "servers": {
+    "myserver": {
+      "env": {
+        "API_KEY": "${input:api-key}"
+      }
+    }
+  }
+}
+```
+
+### Migration from VS Code
+Existing `.vscode/mcp.json` files work directly with MCP Hub. Simply point MCP Hub to your VS Code configuration:
+
+```bash
+mcp-hub --config .vscode/mcp.json --port 3000
+```
+
 ### Multiple Configuration Files
 
 MCP Hub supports loading multiple configuration files that are merged in order. This enables flexible configuration management:
@@ -185,8 +254,12 @@ mcp-hub --port 3000 --config ~/.config/mcphub/global.json --config ./.mcphub/pro
 
 ### Universal Placeholder Syntax
 
-- **`${ENV_VAR}`** - Resolves environment variables
+- **`${ENV_VAR}`** or **`${env:ENV_VAR}`** - Resolves environment variables
 - **`${cmd: command args}`** - Executes commands and uses output
+- **`${workspaceFolder}`** - Directory where mcp-hub is running
+- **`${userHome}`** - User's home directory
+- **`${pathSeparator}`** - OS path separator
+- **`${input:variable-id}`** - Resolves from MCP_HUB_ENV (VS Code compatibility)
 - **`null` or `""`** - Falls back to `process.env`
 
 ### Configuration Examples

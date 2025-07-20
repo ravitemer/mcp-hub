@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2025-07-20
+
+### Added
+
+- **VS Code Configuration Compatibility**: Full support for `.vscode/mcp.json` configuration format
+  - Support for `"servers"` key alongside existing `"mcpServers"` key
+  - VS Code-style environment variable syntax: `${env:VARIABLE_NAME}`
+  - VS Code predefined variables: `${workspaceFolder}`, `${userHome}`, `${pathSeparator}`, `${workspaceFolderBasename}`, `${cwd}`, `${/}`
+  - VS Code input variables via `MCP_HUB_ENV`: support for `${input:variable-id}` syntax
+  - JSON5 support for config files: comments and trailing commas now allowed
+  - Seamless migration path: existing `.vscode/mcp.json` files work directly with MCP Hub
+
+### Enhanced
+
+- **Configuration System**: Enhanced environment variable resolution with VS Code compatibility
+  - Proper priority system: predefined variables → process.env → MCP_HUB_ENV
+  - Predefined variables available for placeholder resolution but not passed to server environments
+  - Comprehensive test coverage for all VS Code variable types and scenarios
 
 ## [4.1.1] - 2025-07-17
 
