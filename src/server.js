@@ -22,6 +22,18 @@ const SERVER_ID = "mcp-hub";
 // Create Express app
 const app = express();
 app.use(express.json());
+
+// Log all incoming requests to /api routes
+router.use((req, res, next) => {
+  logger.debug('API request received', {
+    method: req.method,
+    path: req.path,
+    url: req.url,
+    headers: req.headers
+  });
+  next();
+});
+
 app.use("/api", router);
 
 // Helper to determine HTTP status code from error type
@@ -321,12 +333,21 @@ class ServiceManager {
 
 // Register SSE endpoint
 registerRoute("GET", "/events", "Subscribe to server events", async (req, res) => {
+  logger.debug('SSE connection attempt', {
+    url: req.url,
+    path: req.path,
+    headers: req.headers,
+    method: req.method
+  });
+
   try {
     if (!serviceManager?.sseManager) {
+      logger.error('SSE_MANAGER_NOT_INITIALIZED', 'SSE manager not initialized when client attempted to connect');
       throw new ServerError("SSE manager not initialized");
     }
     // Add client connection
     const connection = await serviceManager.sseManager.addConnection(req, res);
+    logger.debug('SSE connection established successfully');
     // Send initial state
     connection.send(EventTypes.HUB_STATE, serviceManager.getState());
   } catch (error) {
@@ -342,22 +363,90 @@ registerRoute("GET", "/events", "Subscribe to server events", async (req, res) =
   }
 });
 
-// Register MCP SSE endpoint
-app.get("/mcp", async (req, res) => {
+// Register unified MCP endpoint for both Streamable HTTP (new) and SSE (legacy)
+app.post("/mcp", async (req, res) => {
+  logger.debug('POST /mcp request received', {
+    url: req.url,
+    headers: req.headers,
+    contentType: req.headers['content-type'],
+    body: req.body
+  });
+
   try {
     if (!mcpServerEndpoint) {
+      logger.error('MCP_ENDPOINT_NOT_INITIALIZED', 'MCP server endpoint not initialized');
       throw new ServerError("MCP server endpoint not initialized");
     }
-    await mcpServerEndpoint.handleSSEConnection(req, res);
+    // POST requests use Streamable HTTP transport (new protocol)
+    logger.debug('Routing POST to Streamable HTTP handler');
+    await mcpServerEndpoint.handleStreamableHTTP(req, res);
   } catch (error) {
-    logger.warn(`Failed to setup MCP SSE connection: ${error.message}`)
+    logger.warn(`Failed to handle MCP POST request: ${error.message}`, {
+      error: error.message,
+      stack: error.stack
+    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32603,
+          message: "Internal error",
+        },
+        id: null,
+      });
+    }
+  }
+});
+
+app.get("/mcp", async (req, res) => {
+  logger.debug('GET /mcp request received', {
+    url: req.url,
+    headers: req.headers,
+    method: req.method,
+    query: req.query
+  });
+
+  try {
+    if (!mcpServerEndpoint) {
+      logger.error('MCP_ENDPOINT_NOT_INITIALIZED', 'MCP server endpoint not initialized');
+      throw new ServerError("MCP server endpoint not initialized");
+    }
+
+    // Check if this is a Streamable HTTP GET (has Mcp-Session-Id header)
+    // or legacy SSE (no session ID means initial connection attempt)
+    const sessionId = req.headers['mcp-session-id'];
+    const acceptsSSE = req.headers.accept?.includes('text/event-stream');
+
+    logger.debug('MCP GET request type detection', {
+      sessionId: sessionId || 'none',
+      accept: req.headers.accept || 'none',
+      acceptsSSE,
+      willUseStreamableHTTP: !!sessionId,
+      willUseSSE: !sessionId
+    });
+
+    if (sessionId) {
+      // Streamable HTTP GET request (for server-to-client messages in active session)
+      logger.debug('Routing to Streamable HTTP handler (has session ID)');
+      await mcpServerEndpoint.handleStreamableHTTP(req, res);
+    } else {
+      // Legacy SSE transport (backward compatibility)
+      // Any GET request without a session ID is assumed to be an SSE connection attempt
+      logger.debug('Routing to SSE handler (no session ID)');
+      await mcpServerEndpoint.handleSSEConnection(req, res);
+    }
+  } catch (error) {
+    logger.warn(`Failed to handle MCP GET request: ${error.message}`, {
+      error: error.message,
+      stack: error.stack
+    });
     if (!res.headersSent) {
       res.status(500).send('Error establishing MCP connection');
     }
   }
 });
 
-// Register MCP messages endpoint
+// Register legacy MCP messages endpoint (for SSE transport backward compatibility)
 app.post("/messages", async (req, res) => {
   try {
     if (!mcpServerEndpoint) {
@@ -917,9 +1006,18 @@ router.use((err, req, res, next) => {
       method: req.method,
     });
 
+  const statusCode = getStatusCode(error);
+  logger.warn('Router error handler triggered', {
+    path: req.path,
+    method: req.method,
+    statusCode,
+    error: error.message,
+    code: error.code
+  });
+
   // Only send error response if headers haven't been sent
   if (!res.headersSent) {
-    res.status(getStatusCode(error)).json({
+    res.status(statusCode).json({
       error: error.message,
       code: error.code,
       data: error.data,

@@ -5,6 +5,100 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.3] - 2025-11-19
+
+### Fixed
+
+- **SSE Connection Routing**: Fixed 406 errors for SSE clients with non-standard Accept headers
+  - Changed GET /mcp routing logic to default to SSE transport for any sessionless request
+  - Previously rejected clients sending `Accept: */*` instead of `Accept: text/event-stream`
+  - Now properly supports legacy clients like Kilo Code that don't send proper Accept headers
+  - Resolves "SSE error: Non-200 status code (406)" connection failures
+
+- **Transport Cleanup Stack Overflow**: Fixed infinite recursion in cleanup handlers
+  - Added cleanup guard flags to prevent circular cleanup calls
+  - Issue occurred when `cleanup()` → `server.close()` → `transport.close()` → `onclose` → `cleanup()` created infinite loop
+  - Affected both SSE and Streamable HTTP transports during graceful shutdown
+  - Resolves "RangeError: Maximum call stack size exceeded" errors on client disconnect
+
+- **MCP Server Logging**: Improved stderr logging level for MCP server output
+  - Changed MCP server stderr output from `warn` to `debug` level
+  - Prevents normal informational messages from appearing as warnings
+  - Improves log clarity by distinguishing between actual warnings and routine server output
+
+## [5.0.2] - 2025-10-10
+
+### Fixed
+
+- **Streamable HTTP Session Initialization**: Fixed "Transport channel closed" error during session initialization
+  - MCP server now connects to transport BEFORE handling the first request
+  - Transport instances are properly reused for subsequent requests in the same session
+  - Session ID lookup now works correctly for existing sessions
+  - Resolves race condition where transport would close before server initialization completed
+
+## [5.0.1] - 2025-10-10
+
+### Fixed
+
+- **DNS Rebinding Protection**: Disabled by default to prevent 403 Forbidden errors during local development
+  - Streamable HTTP transport now accepts connections without strict origin/host validation
+  - DNS rebinding protection can be enabled manually in production environments if needed
+  - Resolves connection issues where legitimate localhost requests were being rejected
+
+## [5.0.0] - 2025-10-10
+
+### Added
+
+- **Streamable HTTP Transport for Client Connections**: Full support for MCP 2025-03-26 specification
+  - Unified `/mcp` endpoint supporting both POST and GET requests
+  - Cryptographically secure session management with UUID-based session IDs
+  - DNS rebinding protection (disabled by default for ease of use, configurable for production)
+  - Automatic transport detection: Streamable HTTP for modern clients, SSE for legacy clients
+  - Seamless backward compatibility with existing SSE-based clients
+  - Session lifecycle callbacks for proper resource management
+  - Efficient bidirectional communication following latest MCP protocol
+
+### Changed
+
+- **Updated MCP SDK**: Upgraded from v1.15.1 to v1.20.0
+  - Includes latest Streamable HTTP transport implementation
+  - Full support for MCP 2025-03-26 protocol specification
+  - Enhanced security features and session management
+
+- **Dependency Updates**: Updated all dev dependencies to latest versions
+  - `@eslint/js`: 9.31.0 → 9.37.0
+  - `eslint`: 9.31.0 → 9.37.0
+  - `esbuild`: 0.25.3 → 0.25.10
+  - `globals`: 16.2.0 → 16.4.0
+  - `nock`: 14.0.5 → 14.0.10
+  - `open`: 10.1.2 → 10.2.0
+  - `supertest`: 7.1.1 → 7.1.4
+
+### Enhanced
+
+- **Transport Architecture**: Modernized client-hub communication layer
+  - Hub now supports both Streamable HTTP (primary) and SSE (fallback) for client connections
+  - Hub-to-server connections already supported Streamable HTTP, now client-to-hub does too
+  - Single unified endpoint eliminates need for separate `/mcp` and `/messages` endpoints
+  - Improved error handling and connection management
+  - Better logging with transport type identification
+
+- **Documentation**: Updated README to reflect Streamable HTTP support
+  - Clarified transport support matrix for all connection types
+  - Added transport auto-detection information
+  - Updated component descriptions for modern transport layer
+  - Enhanced feature table with accurate transport capabilities
+
+### Migration Notes
+
+This is a **non-breaking change** despite the major version bump:
+- Existing clients using SSE transport will continue to work without modification
+- New clients can use Streamable HTTP transport for improved performance
+- No configuration changes required
+- Automatic transport detection handles both old and new clients seamlessly
+
+The major version bump reflects the significant protocol upgrade and alignment with the latest MCP specification (2025-03-26).
+
 ## [4.2.1] - 2025-08-22
 
 ### Fixed

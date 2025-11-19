@@ -35,6 +35,7 @@ vi.mock("../src/utils/logger.js", () => ({
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
@@ -129,16 +130,36 @@ describe("MCPConnection", () => {
       expect(connection.startTime).toBeNull();
     });
 
-    it("should handle stderr output", async () => {
+    it("should handle stderr output and log at debug level", async () => {
+      const logger = (await import("../src/utils/logger.js")).default;
       let stderrCallback;
       transport.stderr.on.mockImplementation((event, cb) => {
         if (event === "data") stderrCallback = cb;
       });
 
+      // Mock successful connection to avoid the connection error
+      client.connect.mockResolvedValueOnce(undefined);
+      client.request.mockResolvedValueOnce({
+        capabilities: {},
+        protocolVersion: "1.0",
+        serverInfo: { name: "test-server", version: "1.0" },
+      });
+
       await connection.connect();
 
+      // Trigger stderr output
       stderrCallback(Buffer.from("Error output"));
+
+      // Verify error was stored
       expect(connection.error).toBe("Error output");
+
+      // Verify logger.debug was called (not logger.warn)
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining("stderr: Error output")
+      );
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("stderr:")
+      );
     });
 
     it("should disconnect cleanly", async () => {

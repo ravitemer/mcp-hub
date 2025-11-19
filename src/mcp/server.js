@@ -30,6 +30,8 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { randomUUID } from "crypto";
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
@@ -473,47 +475,71 @@ export class MCPServerEndpoint {
    * Handle SSE transport creation (GET /mcp)
    */
   async handleSSEConnection(req, res) {
+    logger.debug('handleSSEConnection called', {
+      url: req.url,
+      headers: req.headers,
+      method: req.method
+    });
 
-    // Create SSE transport
-    const transport = new SSEServerTransport('/messages', res);
-    const sessionId = transport.sessionId;
+    try {
+      // Create SSE transport
+      logger.debug('Creating SSE transport');
+      const transport = new SSEServerTransport('/messages', res);
+      const sessionId = transport.sessionId;
+      logger.debug('SSE transport created', { sessionId });
 
-    // Create a new server instance for this connection
-    const server = this.createServer();
+      // Create a new server instance for this connection
+      const server = this.createServer();
+      logger.debug('Server instance created for SSE connection');
 
-    // Store transport and server together
-    this.clients.set(sessionId, { transport, server });
+      // Store transport and server together
+      this.clients.set(sessionId, { transport, server });
 
-    let clientInfo
+      let clientInfo
+      let cleanupCalled = false;
 
 
-    // Setup cleanup on close
-    const cleanup = async () => {
-      this.clients.delete(sessionId);
-      try {
-        await server.close();
-      } catch (error) {
-        logger.warn(`Error closing server connected to ${clientInfo?.name ?? "Unknown"}: ${error.message}`);
-      } finally {
-        logger.info(`'${clientInfo?.name ?? "Unknown"}' client disconnected from MCP HUB`);
+      // Setup cleanup on close
+      const cleanup = async () => {
+        if (cleanupCalled) return;
+        cleanupCalled = true;
+
+        this.clients.delete(sessionId);
+        try {
+          await server.close();
+        } catch (error) {
+          logger.warn(`Error closing server connected to ${clientInfo?.name ?? "Unknown"}: ${error.message}`);
+        } finally {
+          logger.info(`'${clientInfo?.name ?? "Unknown"}' client disconnected from MCP HUB`);
+        }
+      };
+
+      res.on("close", cleanup);
+      transport.onclose = cleanup;
+
+      // Connect MCP server to transport
+      logger.debug('Connecting server to SSE transport');
+      await server.connect(transport);
+      logger.debug('Server connected to SSE transport successfully');
+
+      server.oninitialized = () => {
+        clientInfo = server.getClientVersion()
+        if (clientInfo) {
+          logger.info(`'${clientInfo.name}' client connected to MCP HUB`)
+        }
       }
-    };
-
-    res.on("close", cleanup);
-    transport.onclose = cleanup;
-
-    // Connect MCP server to transport
-    await server.connect(transport);
-    server.oninitialized = () => {
-      clientInfo = server.getClientVersion()
-      if (clientInfo) {
-        logger.info(`'${clientInfo.name}' client connected to MCP HUB`)
-      }
+    } catch (error) {
+      logger.error('SSE_CONNECTION_ERROR', 'Error in handleSSEConnection', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
     }
   }
 
   /**
    * Handle MCP messages (POST /messages)
+   * Legacy SSE transport endpoint
    */
   async handleMCPMessage(req, res) {
     const sessionId = req.query.sessionId;
@@ -539,6 +565,112 @@ export class MCPServerEndpoint {
     } else {
       logger.warn(`MCP message for unknown session: ${sessionId}`);
       return sendErrorResponse(404, new Error(`Session not found: ${sessionId}`));
+    }
+  }
+
+  /**
+   * Handle Streamable HTTP transport requests (new MCP protocol)
+   * Supports both POST and GET requests on a single endpoint
+   */
+  async handleStreamableHTTP(req, res) {
+    logger.debug('handleStreamableHTTP called', {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      sessionId: req.headers['mcp-session-id'] || 'none'
+    });
+
+    try {
+      // Check if this is for an existing session
+      const sessionId = req.headers['mcp-session-id'];
+
+      if (sessionId) {
+        logger.debug('Session ID found in request', { sessionId });
+        // Reuse existing transport for this session
+        const clientInfo = this.clients.get(sessionId);
+        if (clientInfo) {
+          logger.debug('Reusing existing session', { sessionId });
+          await clientInfo.transport.handleRequest(req, res, req.body);
+          return;
+        }
+        // Session not found - will create new one below
+        logger.debug(`Session ${sessionId} not found, creating new session`);
+      } else {
+        logger.debug('No session ID in request, will create new session');
+      }
+
+      // Create new transport and server for new session
+      const transport = new StreamableHTTPServerTransport({
+        // Generate cryptographically secure session IDs
+        sessionIdGenerator: () => randomUUID(),
+
+        // DNS rebinding protection - disabled by default for local development
+        // Enable in production with appropriate allowedOrigins/allowedHosts configuration
+        enableDnsRebindingProtection: false,
+      });
+
+      // Create a new server instance for this session
+      const server = this.createServer();
+
+      let clientInfo;
+      let cleanupCalled = false;
+
+      // Setup cleanup for when transport closes
+      const cleanup = async () => {
+        if (cleanupCalled) return;
+        cleanupCalled = true;
+
+        if (transport.sessionId) {
+          this.clients.delete(transport.sessionId);
+        }
+        try {
+          await server.close();
+        } catch (error) {
+          logger.warn(`Error closing server: ${error.message}`);
+        } finally {
+          logger.info(`'${clientInfo?.name ?? "Unknown"}' client disconnected from MCP HUB (Streamable HTTP)`);
+        }
+      };
+
+      transport.onclose = cleanup;
+
+      // Connect MCP server to transport BEFORE handling the request
+      await server.connect(transport);
+
+      server.oninitialized = () => {
+        clientInfo = server.getClientVersion();
+        if (clientInfo) {
+          logger.info(`'${clientInfo.name}' client connected to MCP HUB (Streamable HTTP)`);
+        }
+      };
+
+      // Store transport and server together using the transport's session ID
+      // Note: sessionId will be set by the transport during handleRequest if it's an initialize request
+      const originalHandleRequest = transport.handleRequest.bind(transport);
+      transport.handleRequest = async (req, res, parsedBody) => {
+        await originalHandleRequest(req, res, parsedBody);
+        // After handling, if a session was created, store it
+        if (transport.sessionId && !this.clients.has(transport.sessionId)) {
+          logger.debug(`Streamable HTTP session created: ${transport.sessionId}`);
+          this.clients.set(transport.sessionId, { transport, server });
+        }
+      };
+
+      // Handle the HTTP request
+      await transport.handleRequest(req, res, req.body);
+
+    } catch (error) {
+      logger.warn(`Error handling Streamable HTTP request: ${error.message}`);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          error: {
+            code: -32603,
+            message: "Internal error",
+          },
+          id: null,
+        });
+      }
     }
   }
 

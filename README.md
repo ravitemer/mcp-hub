@@ -16,8 +16,8 @@ This dual-interface approach means you can manage servers through the Hub's UI w
 | Category | Feature | Support | Notes |
 |----------|---------|---------|-------|
 | **Transport** ||||
-| | streamable-http | ✅ | Primary transport protocol for remote servers |
-| | SSE | ✅ | Fallback transport for remote servers |
+| | streamable-http | ✅ | Primary transport protocol (client ↔ hub, hub ↔ servers) |
+| | SSE | ✅ | Legacy transport for backward compatibility |
 | | STDIO | ✅ | For running local servers |
 | **Authentication** ||||
 | | OAuth 2.0 | ✅ | With PKCE flow |
@@ -55,11 +55,15 @@ Configure all MCP clients with just one endpoint:
 {
     "mcpServers" : {
         "Hub": {
-            "url" : "http://localhost:37373/mcp"  
+            "url" : "http://localhost:37373/mcp"
         }
     }
 }
 ```
+
+**Transport Auto-Detection**: The Hub automatically detects which transport protocol your client uses:
+- **Modern clients**: Streamable HTTP transport (MCP 2025-03-26 spec)
+- **Legacy clients**: SSE transport (automatic fallback for backward compatibility)
 
 The Hub automatically:
 - Namespaces capabilities to prevent conflicts (e.g., `filesystem__search` vs `database__search`)
@@ -76,10 +80,20 @@ The Hub automatically:
   - Real-time capability updates when servers change
   - Simplified client configuration - just one endpoint instead of many
 
+- **Modern Transport Layer**:
+  - **Streamable HTTP**: Primary transport using MCP 2025-03-26 specification
+    - Single unified endpoint for all client requests
+    - Cryptographically secure session management
+    - Optional DNS rebinding protection (configurable)
+    - Efficient bidirectional communication
+  - **SSE Fallback**: Automatic backward compatibility for legacy clients
+    - Seamless detection and fallback
+    - No configuration required
+
 - **Dynamic Server Management**:
   - Start, stop, enable/disable servers on demand
   - Real-time configuration updates with automatic server reconnection
-  - Support for local (STDIO) and remote (streamable-http/SSE) MCP servers 
+  - Support for local (STDIO) and remote (streamable-http/SSE) MCP servers
   - Health monitoring and automatic recovery
   - OAuth authentication with PKCE flow
   - Header-based token authentication
@@ -126,12 +140,14 @@ The main management server that:
 #### MCP Servers
 Connected services that:
 - Provide tools, resources, templates, and prompts
-- Support two connectivity modes:
-  - Script-based STDIO servers for local operations
-  - Remote servers (streamable-http/SSE) with OAuth support
+- Support three connectivity modes:
+  - **STDIO**: Script-based servers for local operations
+  - **Streamable HTTP**: Modern remote servers (MCP 2025-03-26)
+  - **SSE**: Legacy remote servers (backward compatibility)
 - Implement real-time capability updates
 - Support automatic status recovery
-- Maintain consistent interface across transport types
+- OAuth authentication support for remote servers
+- Maintain consistent interface across all transport types
 
 ## Installation
 

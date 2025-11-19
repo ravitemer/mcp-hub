@@ -682,7 +682,7 @@ export class MCPConnection extends EventEmitter {
     if (stderrStream) {
       stderrStream.on("data", (data) => {
         const errorOutput = data.toString().trim();
-        logger.warn(`${this.name} stderr: ${errorOutput}`)
+        logger.debug(`${this.name} stderr: ${errorOutput}`)
       });
     }
     return transport
