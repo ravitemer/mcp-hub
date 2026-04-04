@@ -79,6 +79,11 @@ async function run() {
         type: "number",
         default: 0,
       },
+      host: {
+        alias: "H",
+        describe: "Host address to bind to (e.g., 127.0.0.1). If not specified, binds to all interfaces",
+        type: "string",
+      },
     })
     .example("mcp-hub --port 3000 --config ./global.json --config ./project.json")
     .help("h")
@@ -92,6 +97,7 @@ async function run() {
       watch: argv.watch,
       autoShutdown: argv["auto-shutdown"],
       shutdownDelay: argv["shutdown-delay"],
+      host: argv.host,
     });
   } catch (error) {
     process.exit(1)

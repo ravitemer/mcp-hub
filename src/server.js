@@ -43,6 +43,7 @@ class ServiceManager {
   constructor(options = {}) {
     this.config = options.config;
     this.port = options.port;
+    this.host = options.host;
     this.autoShutdown = options.autoShutdown;
     this.shutdownDelay = options.shutdownDelay;
     this.watch = options.watch;
@@ -186,10 +187,11 @@ class ServiceManager {
     return new Promise((resolve, reject) => {
       logger.info(`Starting HTTP server on port ${this.port}`, {
         port: this.port,
+        host: this.host,
       });
 
       //INFO: this doesn't throw EADDRINUSE in express@v5 but is thrown inside on("error")
-      this.server = app.listen(this.port, () => {
+      this.server = app.listen(this.port, this.host, () => {
         logger.info("HTTP_SERVER_STARTED");
         resolve();
       });

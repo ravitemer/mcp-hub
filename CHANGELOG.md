@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Host Binding Option**: New `--host` / `-H` CLI argument to specify the bind address
+  - Use `--host 127.0.0.1` to bind to localhost only (recommended for security)
+  - Use `--host localhost` to bind to localhost (IPv6 or IPv4)
+  - Use `--host 0.0.0.0` to bind to all interfaces (explicit)
+  - When not specified, defaults to binding all interfaces (backward compatible)
+
 ## [4.2.1] - 2025-08-22
 
 ### Fixed

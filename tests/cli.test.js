@@ -49,8 +49,11 @@ describe("CLI", () => {
 
     expect(server.startServer).toHaveBeenCalledWith({
       port: 3000,
-      config: "./config.json",
+      config: ["./config.json"],
       watch: false,
+      host: undefined,
+      autoShutdown: false,
+      shutdownDelay: 0,
     });
   });
 
@@ -60,8 +63,11 @@ describe("CLI", () => {
 
     expect(server.startServer).toHaveBeenCalledWith({
       port: 3000,
-      config: "./config.json",
+      config: ["./config.json"],
       watch: true,
+      host: undefined,
+      autoShutdown: false,
+      shutdownDelay: 0,
     });
   });
 
@@ -71,8 +77,11 @@ describe("CLI", () => {
 
     expect(server.startServer).toHaveBeenCalledWith({
       port: 3000,
-      config: "./config.json",
+      config: ["./config.json"],
       watch: false,
+      host: undefined,
+      autoShutdown: false,
+      shutdownDelay: 0,
     });
   });
 
@@ -82,8 +91,11 @@ describe("CLI", () => {
 
     expect(server.startServer).toHaveBeenCalledWith({
       port: 3000,
-      config: "./config.json",
+      config: ["./config.json"],
       watch: false,
+      host: undefined,
+      autoShutdown: false,
+      shutdownDelay: 0,
     });
   });
 
@@ -93,8 +105,39 @@ describe("CLI", () => {
 
     expect(server.startServer).toHaveBeenCalledWith({
       port: 3000,
-      config: "./config.json",
+      config: ["./config.json"],
       watch: true,
+      host: undefined,
+      autoShutdown: false,
+      shutdownDelay: 0,
+    });
+  });
+
+  it("should pass host argument to startServer", async () => {
+    setArgv(["--port", "3000", "--config", "./config.json", "--host", "127.0.0.1"]);
+    await import("../src/utils/cli.js");
+
+    expect(server.startServer).toHaveBeenCalledWith({
+      port: 3000,
+      config: ["./config.json"],
+      watch: false,
+      host: "127.0.0.1",
+      autoShutdown: false,
+      shutdownDelay: 0,
+    });
+  });
+
+  it("should handle host flag alias", async () => {
+    setArgv(["--port", "3000", "--config", "./config.json", "-H", "0.0.0.0"]);
+    await import("../src/utils/cli.js");
+
+    expect(server.startServer).toHaveBeenCalledWith({
+      port: 3000,
+      config: ["./config.json"],
+      watch: false,
+      host: "0.0.0.0",
+      autoShutdown: false,
+      shutdownDelay: 0,
     });
   });
 

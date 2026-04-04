@@ -158,6 +158,7 @@ Options:
   --watch           Watch config file for changes, only updates affected servers (default: false)
   --auto-shutdown   Whether to automatically shutdown when no clients are connected (default: false)
   --shutdown-delay  Delay in milliseconds before shutting down when auto-shutdown is enabled (default: 0)
+  --host            Host address to bind to (e.g., 127.0.0.1). If not specified, binds to all interfaces
   -h, --help       Show help information
 ```
 
