@@ -487,8 +487,14 @@ export class MCPServerEndpoint {
     let clientInfo
 
 
-    // Setup cleanup on close
+    // Setup cleanup on close. Wired to both res.on("close") and
+    // transport.onclose; the guard keeps it at-most-once per session,
+    // since server.close() -> transport.close() -> res.end() re-fires
+    // "close" and would otherwise recurse until the stack overflows.
+    let cleanupRan = false;
     const cleanup = async () => {
+      if (cleanupRan) return;
+      cleanupRan = true;
       this.clients.delete(sessionId);
       try {
         await server.close();
