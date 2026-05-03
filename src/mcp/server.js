@@ -487,18 +487,10 @@ export class MCPServerEndpoint {
     let clientInfo
 
 
-    // Setup cleanup on close.
-    //
-    // The cleanup callback is wired to BOTH res.on("close") AND
-    // transport.onclose so that whichever fires first triggers teardown.
-    // Without a re-entrancy guard, server.close() -> transport.close() ->
-    // res.end() re-fires the "close" event and re-enters cleanup, calling
-    // server.close() again and recursing until V8 throws RangeError:
-    // Maximum call stack size exceeded. Some clients (e.g. Cursor) open
-    // long-lived SSE sessions that reproduce this on every reconnect; the
-    // resulting unhandled rejections eventually drive the hub into
-    // graceful shutdown. The flag below makes cleanup at-most-once per
-    // session.
+    // Setup cleanup on close. Wired to both res.on("close") and
+    // transport.onclose; the guard keeps it at-most-once per session,
+    // since server.close() -> transport.close() -> res.end() re-fires
+    // "close" and would otherwise recurse until the stack overflows.
     let cleanupRan = false;
     const cleanup = async () => {
       if (cleanupRan) return;

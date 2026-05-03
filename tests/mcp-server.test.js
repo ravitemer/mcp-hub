@@ -55,12 +55,9 @@ describe("MCPServerEndpoint.handleSSEConnection", () => {
     vi.clearAllMocks();
   });
 
-  it("runs cleanup at most once when both res.close and transport.onclose fire", async () => {
-    // Reproduces a recursive teardown bug: server.close() inside cleanup
-    // calls transport.close() -> res.end() which re-fires the "close" event,
-    // re-entering cleanup -> server.close() and recursing until V8 throws
-    // RangeError: Maximum call stack size exceeded. Some clients (notably
-    // Cursor's MCP integration) reliably trigger this on every reconnect.
+  // Regression for the recursive SSE teardown documented in
+  // src/mcp/server.js#handleSSEConnection.
+  it("runs cleanup at most once when both teardown paths fire in sequence", async () => {
     const endpoint = new MCPServerEndpoint(makeMcpHubStub());
 
     const req = {};
@@ -74,9 +71,32 @@ describe("MCPServerEndpoint.handleSSEConnection", () => {
     expect(session, "session should be registered before cleanup").toBeDefined();
     const { transport, server } = session;
 
-    // Simulate the recursion: both teardown paths fire, as happens in
-    // production when server.close() ends the response stream.
     res.emit("close");
+    await transport.onclose();
+
+    expect(server.close).toHaveBeenCalledTimes(1);
+    expect(endpoint.clients.has("test-session")).toBe(false);
+  });
+
+  // Reconstructs the production recursion: server.close → transport.close →
+  // res.end → re-emits "close" → re-enters cleanup. Without the guard this
+  // recurses synchronously until V8 throws RangeError; with the guard,
+  // server.close is called exactly once.
+  it("does not recurse when server.close re-fires the response close event", async () => {
+    const endpoint = new MCPServerEndpoint(makeMcpHubStub());
+
+    const req = {};
+    const res = new EventEmitter();
+    res.write = () => {};
+    res.end = () => res.emit("close");
+
+    await endpoint.handleSSEConnection(req, res);
+
+    const session = [...endpoint.clients.values()][0];
+    const { transport, server } = session;
+    server.close.mockImplementation(async () => transport.close());
+    transport.close.mockImplementation(async () => res.end());
+
     await transport.onclose();
 
     expect(server.close).toHaveBeenCalledTimes(1);
